@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"gioui.org/app"
 	"github.com/go-gost/core/logger"
 	xconfig "github.com/go-gost/x/config"
 	logger_parser "github.com/go-gost/x/config/parsing/logger"
@@ -32,7 +31,14 @@ func init() {
 func Init() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{AddSource: true})))
 
-	dir, err := app.DataDir()
+	dir := os.Getenv("GOST_CONFIG_DIR")
+	var err error
+	if dir == "" {
+		dir, err = os.UserConfigDir()
+		if err != nil {
+			dir, err = os.UserHomeDir()
+		}
+	}
 	if err != nil {
 		slog.Error(fmt.Sprintf("appDir: %v", err))
 	}

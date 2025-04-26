@@ -2,21 +2,14 @@ module github.com/go-gost/gost.plus
 
 go 1.23
 
-toolchain go1.23.0
-
 require (
-	gioui.org v0.8.0
-	gioui.org/x v0.8.1
 	github.com/go-gost/core v0.3.0
 	github.com/go-gost/x v0.5.0
 	github.com/google/uuid v1.6.0
-	golang.org/x/exp/shiny v0.0.0-20240707233637-46b078467d37
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
-	gioui.org/shader v1.0.8 // indirect
-	git.wow.st/gmp/jni v0.0.0-20210610011705-34026c7e22d0 // indirect
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -59,6 +52,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.31.0 // indirect
 	golang.org/x/exp v0.0.0-20241210194714-1829a127f884 // indirect
+	golang.org/x/exp/shiny v0.0.0-20240707233637-46b078467d37 // indirect
 	golang.org/x/image v0.18.0 // indirect
 	golang.org/x/net v0.33.0 // indirect
 	golang.org/x/sys v0.28.0 // indirect
