@@ -16,7 +16,6 @@ import (
 	"github.com/go-gost/gost.plus/runner/task"
 	"github.com/go-gost/gost.plus/stats"
 	"github.com/go-gost/gost.plus/tunnel"
-	"github.com/go-gost/gost.plus/tunnel/entrypoint"
 	"github.com/go-gost/gost.plus/version"
 )
 
@@ -102,7 +101,7 @@ func parseFlags() CommandFlags {
 
 	// Define command line arguments
 	flag.StringVar(&flags.LocalEndpoint, "local", "", "Local endpoint to listen on")
-	flag.StringVar(&flags.TunnelType, "tunnel_type", "http", "Tunnel type: http, tcp, udp, file")
+	flag.StringVar(&flags.TunnelType, "tunnel_type", "http", "Tunnel type: http, file")
 	flag.StringVar(&flags.RemoteName, "name", "", "Name for the tunnel (optional)")
 	flag.StringVar(&flags.Username, "username", "", "Username for authentication (optional)")
 	flag.StringVar(&flags.Password, "password", "", "Password for authentication (optional)")
@@ -138,16 +137,12 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "\nExamples:\n")
 	fmt.Fprintf(os.Stderr, "  # Start all configured tunnels\n")
 	fmt.Fprintf(os.Stderr, "  %s\n\n", appName())
-	fmt.Fprintf(os.Stderr, "  # Start all configured tunnels silently without stats\n")
+	fmt.Fprintf(os.Stderr, "  # Start all configured tunnels silently, i.e. without stats\n")
 	fmt.Fprintf(os.Stderr, "  %s --no-stats\n\n", appName())
 	fmt.Fprintf(os.Stderr, "  # Create HTTP tunnel (default type)\n")
 	fmt.Fprintf(os.Stderr, "  %s --local localhost:8080 --name web-service\n\n", appName())
 	fmt.Fprintf(os.Stderr, "  # Create HTTP tunnel (full syntax)\n")
 	fmt.Fprintf(os.Stderr, "  %s --local localhost:8080 --tunnel_type http --name web-service --username admin --password admin --stats-interval 5s\n\n", appName())
-	fmt.Fprintf(os.Stderr, "  # Create TCP tunnel\n")
-	fmt.Fprintf(os.Stderr, "  %s --local localhost:22 --tunnel_type tcp --name ssh-service\n\n", appName())
-	fmt.Fprintf(os.Stderr, "  # Create UDP tunnel\n")
-	fmt.Fprintf(os.Stderr, "  %s --local localhost:53 --tunnel_type udp --name dns-service\n\n", appName())
 	fmt.Fprintf(os.Stderr, "  # Create file sharing tunnel from current directory\n")
 	fmt.Fprintf(os.Stderr, "  %s --local . --tunnel_type file --name file-share\n\n", appName())
 	fmt.Fprintf(os.Stderr, "  # List all tunnels\n")
@@ -165,7 +160,7 @@ func GetVersion() string {
 func initializeSystem() {
 	config.Init()
 	tunnel.LoadConfig()
-	entrypoint.LoadConfig()
+	// entrypoint.LoadConfig()
 }
 
 // Deletes a tunnel by ID
@@ -179,7 +174,7 @@ func deleteTunnel(id string) {
 	name := t.Name()
 	tunnel.Delete(id)
 
-	entrypoint.SaveConfig()
+	// entrypoint.SaveConfig()
 	err := tunnel.SaveConfig()
 	if err != nil {
 		logger.Default().Error(err)
@@ -217,14 +212,14 @@ func createAndStartTunnel(flags CommandFlags) tunnel.Tunnel {
 
 	validTypes := map[string]bool{
 		tunnel.HTTPTunnel: true,
-		tunnel.TCPTunnel:  true,
-		tunnel.UDPTunnel:  true,
 		tunnel.FileTunnel: true,
+		// tunnel.TCPTunnel:  true,
+		// tunnel.UDPTunnel:  true,
 	}
 
 	// Validate tunnel type
 	if !validTypes[tunnelTypeStr] {
-		fmt.Printf("Invalid tunnel type: %s. Valid types are: http, tcp, udp, file\n", tunnelTypeStr)
+		fmt.Printf("Invalid tunnel type: %s. Supported types: http, file\n", tunnelTypeStr)
 		os.Exit(1)
 	}
 
@@ -286,12 +281,12 @@ func createTunnel(tunnelTypeStr string, options []tunnel.Option) tunnel.Tunnel {
 	switch tunnelTypeStr {
 	case tunnel.HTTPTunnel:
 		newTunnel = tunnel.NewHTTPTunnel(options...)
+	case tunnel.FileTunnel:
+		newTunnel = tunnel.NewFileTunnel(options...)
 	case tunnel.TCPTunnel:
 		newTunnel = tunnel.NewTCPTunnel(options...)
 	case tunnel.UDPTunnel:
 		newTunnel = tunnel.NewUDPTunnel(options...)
-	case tunnel.FileTunnel:
-		newTunnel = tunnel.NewFileTunnel(options...)
 	}
 	return newTunnel
 }
@@ -351,7 +346,7 @@ func cleanupAndExit(createNewTunnel bool, newTunnel tunnel.Tunnel) {
 	fmt.Println("\nShutting down tunnels...")
 
 	// Save configuration before exit
-	entrypoint.SaveConfig()
+	// entrypoint.SaveConfig()
 	err := tunnel.SaveConfig()
 	if err != nil {
 		logger.Default().Error(err)
