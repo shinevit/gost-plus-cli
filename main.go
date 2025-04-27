@@ -14,6 +14,7 @@ import (
 	"github.com/go-gost/gost.plus/config"
 	"github.com/go-gost/gost.plus/runner"
 	"github.com/go-gost/gost.plus/runner/task"
+	"github.com/go-gost/gost.plus/stats"
 	"github.com/go-gost/gost.plus/tunnel"
 	"github.com/go-gost/gost.plus/tunnel/entrypoint"
 	"github.com/go-gost/gost.plus/version"
@@ -33,6 +34,7 @@ type CommandFlags struct {
 	DeleteTunnelID string
 	ListTunnels    bool
 	ShowHelp       bool
+	NoStats        bool
 }
 
 func main() {
@@ -78,11 +80,13 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	startStatsRunner(ctx, flags.StatsInterval)
 	doneChan := make(chan struct{})
 
-	if tunnel.Count() > 0 {
-		go displayStats(doneChan, flags.StatsInterval)
+	if !flags.NoStats {
+		startStatsRunner(ctx, flags.StatsInterval)
+		if tunnel.Count() > 0 {
+			go stats.DisplayStats(doneChan, flags.StatsInterval)
+		}
 	}
 
 	// Wait for shutdown signal
@@ -109,6 +113,7 @@ func parseFlags() CommandFlags {
 	flag.StringVar(&flags.DeleteTunnelID, "delete", "", "Delete tunnel by ID")
 	flag.BoolVar(&flags.ListTunnels, "list", false, "List all tunnels")
 	flag.BoolVar(&flags.ShowHelp, "help", false, "Show help information")
+	flag.BoolVar(&flags.NoStats, "no-stats", false, "Disable statistics in daemon mode")
 
 	// Override default usage function
 	flag.Usage = printUsage
@@ -119,29 +124,36 @@ func parseFlags() CommandFlags {
 	return flags
 }
 
+// Get the App name
+func appName() string {
+	return strings.TrimPrefix(os.Args[0], "./")
+}
+
 // Prints the usage information
 func printUsage() {
 	fmt.Fprintf(os.Stderr, "%s\n", GetVersion())
-	fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", appName())
 	fmt.Fprintf(os.Stderr, "Options:\n")
 	flag.PrintDefaults()
 	fmt.Fprintf(os.Stderr, "\nExamples:\n")
 	fmt.Fprintf(os.Stderr, "  # Start all configured tunnels\n")
-	fmt.Fprintf(os.Stderr, "  %s\n\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "  %s\n\n", appName())
+	fmt.Fprintf(os.Stderr, "  # Start all configured tunnels silently without stats\n")
+	fmt.Fprintf(os.Stderr, "  %s --no-stats\n\n", appName())
 	fmt.Fprintf(os.Stderr, "  # Create HTTP tunnel (default type)\n")
-	fmt.Fprintf(os.Stderr, "  %s --local localhost:8080 --name web-service\n\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "  %s --local localhost:8080 --name web-service\n\n", appName())
 	fmt.Fprintf(os.Stderr, "  # Create HTTP tunnel (full syntax)\n")
-	fmt.Fprintf(os.Stderr, "  %s --local localhost:8080 --tunnel_type http --name web-service --username admin --password admin --stats-interval 5s\n\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "  %s --local localhost:8080 --tunnel_type http --name web-service --username admin --password admin --stats-interval 5s\n\n", appName())
 	fmt.Fprintf(os.Stderr, "  # Create TCP tunnel\n")
-	fmt.Fprintf(os.Stderr, "  %s --local localhost:22 --tunnel_type tcp --name ssh-service\n\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "  %s --local localhost:22 --tunnel_type tcp --name ssh-service\n\n", appName())
 	fmt.Fprintf(os.Stderr, "  # Create UDP tunnel\n")
-	fmt.Fprintf(os.Stderr, "  %s --local localhost:53 --tunnel_type udp --name dns-service\n\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "  %s --local localhost:53 --tunnel_type udp --name dns-service\n\n", appName())
 	fmt.Fprintf(os.Stderr, "  # Create file sharing tunnel from current directory\n")
-	fmt.Fprintf(os.Stderr, "  %s --local . --tunnel_type file --name file-share\n\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "  %s --local . --tunnel_type file --name file-share\n\n", appName())
 	fmt.Fprintf(os.Stderr, "  # List all tunnels\n")
-	fmt.Fprintf(os.Stderr, "  %s --list\n\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "  %s --list\n\n", appName())
 	fmt.Fprintf(os.Stderr, "  # Delete a tunnel\n")
-	fmt.Fprintf(os.Stderr, "  %s --delete \"tunnel-id\"\n\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "  %s --delete \"tunnel-id\"\n\n", appName())
 }
 
 // Returns a formatted version string
@@ -257,10 +269,15 @@ func createAndStartTunnel(flags CommandFlags) tunnel.Tunnel {
 	fmt.Printf("\n%s Tunnel started:\n", strings.ToUpper(tunnelTypeStr))
 	fmt.Printf("ID: %s\n", newTunnel.ID())
 	fmt.Printf("Name: %s\n", newTunnel.Name())
-	fmt.Printf("Local Endpoint: %s\n", newTunnel.Endpoint())
-	fmt.Printf("Remote Entrypoint: %s\n", newTunnel.Entrypoint())
-	fmt.Printf("\nPress Ctrl+C to stop the tunnel\n\n")
 
+	if flags.TunnelType == tunnel.FileTunnel {
+		fmt.Printf("Local folder: %s\n", newTunnel.Endpoint())
+	} else {
+		fmt.Printf("Local endpoint: %s\n", newTunnel.Endpoint())
+	}
+
+	fmt.Printf("Remote entrypoint: %s\n", newTunnel.Entrypoint())
+	fmt.Printf("\nPress Ctrl+C to stop the tunnel\n\n")
 	return newTunnel
 }
 
@@ -287,7 +304,7 @@ func startExistingTunnels() {
 		os.Exit(0)
 	}
 
-	fmt.Println("Starting tunnels from configuration...")
+	fmt.Println("\nStarting tunnels from configuration...")
 
 	for i := range tunnel.Count() {
 		t := tunnel.GetIndex(i)
@@ -301,7 +318,7 @@ func startExistingTunnels() {
 			continue
 		}
 
-		fmt.Printf("Started %s tunnel: %s (ID: %s)\n", strings.ToUpper(t.Type()), t.Name(), t.ID())
+		fmt.Printf("Started %s tunnel: %s [ID: %s, URL: %s]\n", strings.ToUpper(t.Type()), t.Name(), t.ID(), t.Entrypoint())
 	}
 
 	fmt.Println("\nPress Ctrl+C to stop all tunnels")
@@ -352,71 +369,4 @@ func cleanupAndExit(createNewTunnel bool, newTunnel tunnel.Tunnel) {
 			logger.Default().Errorf("Tunnel %s errors: %v", newTunnel.ID(), err)
 		}
 	}
-}
-
-// Shows statistics about active tunnels
-func displayStats(done chan struct{}, interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	// Clear the terminal line and move cursor to beginning
-	clearLine := func() {
-		fmt.Printf("\033[2K\r")
-	}
-
-	// Get active tunnel count
-	activeTunnels := getActiveTunnelCount()
-
-	// Print initial header
-	fmt.Printf("Monitoring %d active tunnels. Stats will appear below:\n", activeTunnels)
-	lastNumLines := 0
-
-	for {
-		select {
-		case <-ticker.C:
-			// Move cursor up for each line we printed previously
-			if lastNumLines > 0 {
-				fmt.Printf("\033[%dA", lastNumLines)
-			}
-
-			// Count active tunnels and print stats
-			lineCount := 0
-
-			for i := range tunnel.Count() {
-				t := tunnel.GetIndex(i)
-				if t == nil || t.IsClosed() {
-					continue
-				}
-
-				stats := t.Stats()
-				clearLine()
-				fmt.Printf("[%s-%s] Conn: %d/%d | Transfer: ↑ %.2f KB/s ↓ %.2f KB/s | Total: ↑ %.2f MB ↓ %.2f MB | Err: %d",
-					t.Name(), strings.ToUpper(t.Type()),
-					stats.CurrentConns, stats.TotalConns,
-					float64(stats.OutputRateBytes)/1024, float64(stats.InputRateBytes)/1024,
-					float64(stats.OutputBytes)/(1024*1024), float64(stats.InputBytes)/(1024*1024),
-					stats.TotalErrs)
-				fmt.Println()
-				lineCount++
-			}
-
-			// Update line count for next iteration
-			lastNumLines = lineCount
-
-		case <-done:
-			return
-		}
-	}
-}
-
-// Returns the number of active tunnels
-func getActiveTunnelCount() int {
-	count := 0
-	for i := range tunnel.Count() {
-		t := tunnel.GetIndex(i)
-		if t != nil && !t.IsClosed() {
-			count++
-		}
-	}
-	return count
 }

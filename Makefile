@@ -83,17 +83,6 @@ windows-arm64: $(BINDIR)
 	GOOS=windows GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o $(BINDIR)/$(NAME)-$(VERSION)-$@.exe $(GOFILES)
 	@echo "Build complete: $(BINDIR)/$(NAME)-$(VERSION)-$@.exe"
 
-.PHONY: android
-android: $(BINDIR)
-	@echo "Building for Android..."
-	@if ! command -v gogio >/dev/null 2>&1; then \
-		echo "Error: gogio not found. Please install with: go install gioui.org/cmd/gogio@latest"; \
-		exit 1; \
-	fi
-	gogio -x -work -target android -minsdk 22 -version $(VERSION).8 -name GOST+ -signkey build/sign.keystore -signpass android -appid gost.plus -o $(BINDIR)/$(NAME)-$(VERSION).aab .
-	gogio -x -work -target android -minsdk 22 -version $(VERSION).8 -name GOST+ -signkey build/sign.keystore -signpass android -appid gost.plus -o $(BINDIR)/$(NAME)-$(VERSION).apk .
-	@echo "Build complete"
-
 # Release packaging
 .PHONY: package
 package: $(BINDIR)
@@ -137,7 +126,6 @@ help:
 	@echo "  darwin-arm64  - Build for macOS ARM64"
 	@echo "  windows-amd64 - Build for Windows AMD64"
 	@echo "  windows-arm64 - Build for Windows ARM64"
-	@echo "  android       - Build for Android"
 	@echo "  package       - Package the build for current platform"
 	@echo "  release       - Build and package for current platform"
 	@echo "  clean         - Clean build artifacts"

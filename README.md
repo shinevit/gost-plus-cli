@@ -62,13 +62,16 @@ go build -o gost-tunnel main.go
 ./gost-tunnel --local localhost:8080 --name "my-tunnel"
 
 # Create a new tunnel. Full Example
-./gost-tunnel --local localhost:8080 --tunnel_type http --name mytunnel --username myuser --password mypass --hostname example.com --tls --stats-interval 5s
+./gost-tunnel --local localhost:8080 --tunnel_type http --name mytunnel --username myuser --password mypass --hostname example.com --tls --stats-interval 2s
 
 # Delete a tunnel by ID
 ./gost-tunnel --delete "12345678-1234-1234-1234-123456789abc"
 
-# Start all configured tunnels from config
+# Start all configured tunnels using config
 ./gost-tunnel
+
+# Start all configured tunnels without statistics updates, e.g. for daemon mode
+./gost-tunnel --no-stats
 
 # Show version
 ./gost-tunnel --version
