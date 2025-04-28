@@ -44,37 +44,39 @@ Expose local UDP service to the public network.
 <img src="assets/edit-android.png" width="512" />
 
 
-### Build the console application:
+### Build Console App:
 ```bash
-go build -o gost-tunnel main.go
+go build -ldflags="-s -w" -o gost-tunnel main.go
+# or
+make
 ```
 
 ### Usage examples on CLI:
 
 ```bash
 # Show a help for the application
-./gost-tunnel --help
+gost-tunnel --help
 
 # List all configured tunnels
-./gost-tunnel --list
+gost-tunnel --list
 
 # Create a new tunnel quickly
-./gost-tunnel --local localhost:8080 --name "my-tunnel"
+gost-tunnel --local localhost:8080 --name "my-tunnel"
 
 # Create a new tunnel. Full Example
-./gost-tunnel --local localhost:8080 --tunnel_type http --name mytunnel --username myuser --password mypass --hostname example.com --tls --stats-interval 2s
+gost-tunnel --local localhost:8080 --tunnel_type http --name mytunnel --username myuser --password mypass --hostname example.com --tls --stats-interval 2s
 
 # Delete a tunnel by ID
-./gost-tunnel --delete "12345678-1234-1234-1234-123456789abc"
+gost-tunnel --delete "12345678-1234-1234-1234-123456789abc"
 
 # Start all configured tunnels using config
-./gost-tunnel
+gost-tunnel
 
 # Start all configured tunnels without statistics updates, e.g. for daemon mode
-./gost-tunnel --no-stats
+gost-tunnel --no-stats
 
 # Show version
-./gost-tunnel --version
+gost-tunnel --version
 ```
 
 ### App related folders and configuration
