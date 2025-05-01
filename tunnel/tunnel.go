@@ -231,13 +231,52 @@ func ChainConfig(id string, name string) *xconfig.ChainConfig {
 	}
 }
 
-func LoadConfig() {
+func SaveConfig() error {
+	cfg := config.Get()
+	cfg.Tunnels = nil
+
+	for i := range Count() {
+		tun := GetIndex(i)
+		if tun == nil {
+			continue
+		}
+
+		opts := tun.Options()
+		cfg.Tunnels = append(cfg.Tunnels, &config.Tunnel{
+			ID:        tun.ID(),
+			Name:      tun.Name(),
+			Type:      tun.Type(),
+			Endpoint:  tun.Endpoint(),
+			Hostname:  opts.Hostname,
+			Username:  opts.Username,
+			Password:  opts.Password,
+			EnableTLS: opts.EnableTLS,
+			Favorite:  tun.IsFavorite(),
+			Closed:    tun.IsClosed(),
+			CreatedAt: opts.CreatedAt,
+			Stats:     tun.Stats(),
+			Keepalive: opts.Keepalive,
+			TTL:       opts.TTL,
+		})
+	}
+
+	config.Set(cfg)
+
+	if err := cfg.Write(); err != nil {
+		logger.Default().Error(err)
+		return err
+	}
+	return nil
+}
+
+// Initializes tunnels instances from the configuration and starts them.
+func InitFromConfig() {
 	for _, cfg := range config.Get().Tunnels {
 		if cfg == nil {
 			continue
 		}
 
-		tun := createTunnel(cfg.Type, Options{
+		tun := CreateTunnel(cfg.Type, Options{
 			ID:        cfg.ID,
 			Name:      cfg.Name,
 			Endpoint:  cfg.Endpoint,
@@ -263,44 +302,7 @@ func LoadConfig() {
 	}
 }
 
-func SaveConfig() error {
-	cfg := config.Get()
-	cfg.Tunnels = nil
-
-	for i := 0; i < Count(); i++ {
-		tun := GetIndex(i)
-		if tun == nil {
-			continue
-		}
-
-		opts := tun.Options()
-
-		cfg.Tunnels = append(cfg.Tunnels, &config.Tunnel{
-			ID:        tun.ID(),
-			Name:      tun.Name(),
-			Type:      tun.Type(),
-			Endpoint:  tun.Endpoint(),
-			Hostname:  opts.Hostname,
-			Username:  opts.Username,
-			Password:  opts.Password,
-			EnableTLS: opts.EnableTLS,
-			Favorite:  tun.IsFavorite(),
-			Closed:    tun.IsClosed(),
-			CreatedAt: opts.CreatedAt,
-			Stats:     tun.Stats(),
-		})
-	}
-
-	config.Set(cfg)
-
-	if err := cfg.Write(); err != nil {
-		logger.Default().Error(err)
-		return err
-	}
-	return nil
-}
-
-func createTunnel(st string, opts Options) (t Tunnel) {
+func CreateTunnel(st string, opts Options) (t Tunnel) {
 	options := []Option{
 		IDOption(opts.ID),
 		NameOption(opts.Name),

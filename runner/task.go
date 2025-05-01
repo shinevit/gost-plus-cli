@@ -7,7 +7,8 @@ import (
 type TaskID string
 
 const (
-	TaskUpdateStats TaskID = "service.stats.update"
+	TaskUpdateStats    TaskID = "service.stats.update"
+	TaskMonitorTunnels TaskID = "service.tunnel.monitor"
 )
 
 type Task interface {

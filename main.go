@@ -17,23 +17,25 @@ import (
 	"github.com/go-gost/gost.plus/stats"
 	"github.com/go-gost/gost.plus/tunnel"
 	"github.com/go-gost/gost.plus/version"
+	"github.com/go-gost/x/service"
 )
 
 // Command line flags
 type CommandFlags struct {
-	LocalEndpoint  string
-	TunnelType     string
-	RemoteName     string
-	Username       string
-	Password       string
-	Hostname       string
-	EnableTLS      bool
-	ShowVersion    bool
-	StatsInterval  time.Duration
-	DeleteTunnelID string
-	ListTunnels    bool
-	ShowHelp       bool
-	NoStats        bool
+	LocalEndpoint   string
+	TunnelType      string
+	ServiceName     string
+	Username        string
+	Password        string
+	Hostname        string
+	EnableTLS       bool
+	ShowVersion     bool
+	StatsInterval   time.Duration
+	MonitorInterval time.Duration
+	DeleteTunnelID  string
+	ListTunnels     bool
+	ShowHelp        bool
+	NoStats         bool
 }
 
 func main() {
@@ -51,8 +53,9 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Initialize configuration and load tunnels
-	initializeSystem()
+	// Initializes the configuration and loads tunnels
+	config.Init()
+	tunnel.InitFromConfig()
 
 	// Handle tunnel management commands
 	if flags.DeleteTunnelID != "" {
@@ -70,7 +73,7 @@ func main() {
 	createNewTunnel := flags.LocalEndpoint != ""
 
 	if createNewTunnel {
-		newTunnel = createAndStartTunnel(flags)
+		newTunnel = createAndRunTunnel(flags)
 	} else {
 		startExistingTunnels()
 	}
@@ -80,6 +83,8 @@ func main() {
 	defer cancel()
 
 	doneChan := make(chan struct{})
+
+	startTunnelMonitor(ctx, flags.MonitorInterval)
 
 	if !flags.NoStats {
 		startStatsRunner(ctx, flags.StatsInterval)
@@ -91,7 +96,7 @@ func main() {
 	// Wait for shutdown signal
 	waitForShutdown(doneChan)
 
-	// Cleanup and save configuration
+	// Save configuration and cleanup
 	cleanupAndExit(createNewTunnel, newTunnel)
 }
 
@@ -102,13 +107,14 @@ func parseFlags() CommandFlags {
 	// Define command line arguments
 	flag.StringVar(&flags.LocalEndpoint, "local", "", "Local endpoint to listen on")
 	flag.StringVar(&flags.TunnelType, "tunnel_type", "http", "Tunnel type: http, file")
-	flag.StringVar(&flags.RemoteName, "name", "", "Name for the tunnel (optional)")
+	flag.StringVar(&flags.ServiceName, "name", "", "Name for the tunnel (optional)")
 	flag.StringVar(&flags.Username, "username", "", "Username for authentication (optional)")
 	flag.StringVar(&flags.Password, "password", "", "Password for authentication (optional)")
 	flag.StringVar(&flags.Hostname, "hostname", "", "Hostname for the tunnel (optional)")
 	flag.BoolVar(&flags.EnableTLS, "tls", false, "Enable TLS")
 	flag.BoolVar(&flags.ShowVersion, "version", false, "Show version information")
 	flag.DurationVar(&flags.StatsInterval, "stats-interval", time.Second, "Stats update interval")
+	flag.DurationVar(&flags.MonitorInterval, "monitor-interval", 60*time.Second, "Tunnel connection monitoring interval")
 	flag.StringVar(&flags.DeleteTunnelID, "delete", "", "Delete tunnel by ID")
 	flag.BoolVar(&flags.ListTunnels, "list", false, "List all tunnels")
 	flag.BoolVar(&flags.ShowHelp, "help", false, "Show help information")
@@ -139,6 +145,8 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "  %s\n\n", appName())
 	fmt.Fprintf(os.Stderr, "  # Start all configured tunnels silently, i.e. without stats\n")
 	fmt.Fprintf(os.Stderr, "  %s --no-stats\n\n", appName())
+	fmt.Fprintf(os.Stderr, "  # Monitor and auto-restart tunnels every minute\n")
+	fmt.Fprintf(os.Stderr, "  %s --monitor-interval 2m\n\n", appName())
 	fmt.Fprintf(os.Stderr, "  # Create HTTP tunnel (default type)\n")
 	fmt.Fprintf(os.Stderr, "  %s --local localhost:8080 --name web-service\n\n", appName())
 	fmt.Fprintf(os.Stderr, "  # Create HTTP tunnel (full syntax)\n")
@@ -156,13 +164,6 @@ func GetVersion() string {
 	return fmt.Sprintf("GOST+ CLI Version %s\n", version.Version)
 }
 
-// Initializes the configuration and loads tunnels
-func initializeSystem() {
-	config.Init()
-	tunnel.LoadConfig()
-	// entrypoint.LoadConfig()
-}
-
 // Deletes a tunnel by ID
 func deleteTunnel(id string) {
 	t := tunnel.Get(id)
@@ -174,7 +175,6 @@ func deleteTunnel(id string) {
 	name := t.Name()
 	tunnel.Delete(id)
 
-	// entrypoint.SaveConfig()
 	err := tunnel.SaveConfig()
 	if err != nil {
 		logger.Default().Error(err)
@@ -197,18 +197,16 @@ func listAllTunnels() {
 		if t == nil {
 			continue
 		}
-		status := "CLOSED"
-		if !t.IsClosed() {
-			status = "ACTIVE"
-		}
+
+		status := strings.ToUpper(string(t.Status().State()))
 		fmt.Printf("%-36s %-20s %-10s %-10s\n", t.ID(), t.Name(), t.Type(), status)
 	}
 	fmt.Println("-------------------------------------------------------------------------")
 }
 
-// Creates and starts a new tunnel based on command line flags
-func createAndStartTunnel(flags CommandFlags) tunnel.Tunnel {
-	tunnelTypeStr := strings.ToLower(flags.TunnelType)
+// Creates and runs a new tunnel based on command line flags
+func createAndRunTunnel(flags CommandFlags) tunnel.Tunnel {
+	tunnelType := strings.ToLower(flags.TunnelType)
 
 	validTypes := map[string]bool{
 		tunnel.HTTPTunnel: true,
@@ -217,36 +215,25 @@ func createAndStartTunnel(flags CommandFlags) tunnel.Tunnel {
 		// tunnel.UDPTunnel:  true,
 	}
 
-	// Validate tunnel type
-	if !validTypes[tunnelTypeStr] {
-		fmt.Printf("Invalid tunnel type: %s. Supported types: http, file\n", tunnelTypeStr)
+	// Validate a supported tunnel type
+	if !validTypes[tunnelType] {
+		fmt.Printf("Invalid tunnel type: %s. Supported types: http, file\n", tunnelType)
 		os.Exit(1)
 	}
 
-	// Create tunnel options
-	options := []tunnel.Option{
-		tunnel.EndpointOption(flags.LocalEndpoint),
-		tunnel.EnableTLSOption(flags.EnableTLS),
+	options := tunnel.Options{
+		Name:      flags.ServiceName,
+		Endpoint:  flags.LocalEndpoint,
+		Hostname:  flags.Hostname,
+		Username:  flags.Username,
+		Password:  flags.Password,
+		EnableTLS: flags.EnableTLS,
+		Keepalive: true,
 	}
 
-	// Add optional parameters if provided
-	if flags.RemoteName != "" {
-		options = append(options, tunnel.NameOption(flags.RemoteName))
-	}
-	if flags.Username != "" {
-		options = append(options, tunnel.UsernameOption(flags.Username))
-	}
-	if flags.Password != "" {
-		options = append(options, tunnel.PasswordOption(flags.Password))
-	}
-	if flags.Hostname != "" {
-		options = append(options, tunnel.HostnameOption(flags.Hostname))
-	}
-
-	// Create appropriate tunnel based on type
-	var newTunnel = createTunnel(tunnelTypeStr, options)
+	var newTunnel = tunnel.CreateTunnel(tunnelType, options)
 	if newTunnel == nil {
-		fmt.Printf("Failed to create %s tunnel\n", tunnelTypeStr)
+		fmt.Printf("Failed to create %s tunnel\n", tunnelType)
 		os.Exit(1)
 	}
 
@@ -261,7 +248,7 @@ func createAndStartTunnel(flags CommandFlags) tunnel.Tunnel {
 	tunnel.Add(newTunnel)
 
 	// Print tunnel information
-	fmt.Printf("\n%s Tunnel started:\n", strings.ToUpper(tunnelTypeStr))
+	fmt.Printf("\n%s Tunnel started:\n", strings.ToUpper(tunnelType))
 	fmt.Printf("ID: %s\n", newTunnel.ID())
 	fmt.Printf("Name: %s\n", newTunnel.Name())
 
@@ -273,21 +260,6 @@ func createAndStartTunnel(flags CommandFlags) tunnel.Tunnel {
 
 	fmt.Printf("Remote entrypoint: %s\n", newTunnel.Entrypoint())
 	fmt.Printf("\nPress Ctrl+C to stop the tunnel\n\n")
-	return newTunnel
-}
-
-func createTunnel(tunnelTypeStr string, options []tunnel.Option) tunnel.Tunnel {
-	var newTunnel tunnel.Tunnel
-	switch tunnelTypeStr {
-	case tunnel.HTTPTunnel:
-		newTunnel = tunnel.NewHTTPTunnel(options...)
-	case tunnel.FileTunnel:
-		newTunnel = tunnel.NewFileTunnel(options...)
-	case tunnel.TCPTunnel:
-		newTunnel = tunnel.NewTCPTunnel(options...)
-	case tunnel.UDPTunnel:
-		newTunnel = tunnel.NewUDPTunnel(options...)
-	}
 	return newTunnel
 }
 
@@ -307,10 +279,12 @@ func startExistingTunnels() {
 			continue
 		}
 
-		err := t.Run()
-		if err != nil {
-			logger.Default().Errorf("Failed to start tunnel %s: %v", t.ID(), err)
-			continue
+		if t.Status().State() != service.StateRunning {
+			err := t.Run()
+			if err != nil {
+				logger.Default().Errorf("Failed to start tunnel %s: %v", t.ID(), err)
+				continue
+			}
 		}
 
 		fmt.Printf("Started %s tunnel: %s [ID: %s, URL: %s]\n", strings.ToUpper(t.Type()), t.Name(), t.ID(), t.Entrypoint())
@@ -319,10 +293,10 @@ func startExistingTunnels() {
 	fmt.Println("\nPress Ctrl+C to stop all tunnels")
 }
 
-// Starts the stats update runner
+// Starts the stats updater
 func startStatsRunner(ctx context.Context, interval time.Duration) {
 	err := runner.Exec(ctx, task.UpdateStats(),
-		runner.WithAync(true),
+		runner.WithAsync(true),
 		runner.WithInterval(interval),
 		runner.WithCancel(true),
 	)
@@ -346,7 +320,6 @@ func cleanupAndExit(createNewTunnel bool, newTunnel tunnel.Tunnel) {
 	fmt.Println("\nShutting down tunnels...")
 
 	// Save configuration before exit
-	// entrypoint.SaveConfig()
 	err := tunnel.SaveConfig()
 	if err != nil {
 		logger.Default().Error(err)
@@ -363,5 +336,16 @@ func cleanupAndExit(createNewTunnel bool, newTunnel tunnel.Tunnel) {
 		if err != nil {
 			logger.Default().Errorf("Tunnel %s errors: %v", newTunnel.ID(), err)
 		}
+	}
+}
+
+func startTunnelMonitor(ctx context.Context, interval time.Duration) {
+	err := runner.Exec(ctx, task.MonitorTunnels(),
+		runner.WithAsync(true),
+		runner.WithInterval(interval),
+		runner.WithCancel(true),
+	)
+	if err != nil {
+		logger.Default().Error(err)
 	}
 }

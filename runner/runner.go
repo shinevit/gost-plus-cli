@@ -30,7 +30,7 @@ type Options struct {
 
 type Option func(opts *Options)
 
-func WithAync(aync bool) Option {
+func WithAsync(aync bool) Option {
 	return func(opts *Options) {
 		opts.Async = aync
 	}

@@ -20,7 +20,6 @@ require (
 	github.com/go-gost/relay v0.5.0 // indirect
 	github.com/go-gost/tls-dissector v0.1.1 // indirect
 	github.com/go-redis/redis/v8 v8.11.5 // indirect
-	github.com/go-text/typesetting v0.2.1 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/gravitational/trace v1.1.16-0.20220114165159-14a9a7dd6aaf // indirect
@@ -52,8 +51,6 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.31.0 // indirect
 	golang.org/x/exp v0.0.0-20241210194714-1829a127f884 // indirect
-	golang.org/x/exp/shiny v0.0.0-20240707233637-46b078467d37 // indirect
-	golang.org/x/image v0.18.0 // indirect
 	golang.org/x/net v0.33.0 // indirect
 	golang.org/x/sys v0.28.0 // indirect
 	golang.org/x/term v0.27.0 // indirect
