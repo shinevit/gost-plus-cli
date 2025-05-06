@@ -1,0 +1,17 @@
+force-file-write: true
+formatter: goimports
+log-level: info
+pkgname: "{{.SrcPackageName}}"
+recursive: false
+template: testify
+packages:
+  github.com/go-gost/gost.plus/tunnel:
+    interfaces:
+      Tunnel:
+        config:
+          filename: "mock_{{ .InterfaceName | lower }}.go"
+  github.com/go-gost/gost.plus/tests/mocks:
+    interfaces:
+      Logger:
+        config:
+          filename: "mock_{{ .InterfaceName | lower }}.go"

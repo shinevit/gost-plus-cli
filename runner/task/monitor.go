@@ -12,10 +12,22 @@ import (
 	"github.com/go-gost/x/service"
 )
 
-type monitorTunnelsTask struct{}
+type monitorTunnelsTask struct {
+	logger logger.Logger
+}
 
-func MonitorTunnels() runner.Task {
-	return &monitorTunnelsTask{}
+func NewMonitorTask() runner.Task {
+	return &monitorTunnelsTask{
+		logger: logger.Default().WithFields(map[string]any{
+			"kind": "monitor",
+		}),
+	}
+}
+
+func NewMonitorTaskWith(logger logger.Logger) runner.Task {
+	return &monitorTunnelsTask{
+		logger: logger,
+	}
 }
 
 func (t *monitorTunnelsTask) ID() runner.TaskID {
@@ -33,9 +45,7 @@ var httpClient = &http.Client{
 }
 
 func (t *monitorTunnelsTask) Run(ctx context.Context) error {
-	log := logger.Default().WithFields(map[string]any{
-		"kind": "monitor",
-	})
+	log := t.logger
 
 	for i := range tunnel.Count() {
 		tun := tunnel.GetIndex(i)
@@ -49,9 +59,8 @@ func (t *monitorTunnelsTask) Run(ctx context.Context) error {
 		}
 
 		isActive := false
-		entrypoint := tun.Entrypoint()
-
 		if tun.Type() == tunnel.HTTPTunnel || tun.Type() == tunnel.FileTunnel {
+			entrypoint := tun.Entrypoint()
 			log.Infof("Checking tunnel %s connection at %s", tun.Name(), entrypoint)
 			req, err := http.NewRequestWithContext(ctx, http.MethodGet, entrypoint, nil)
 			if err != nil {
@@ -65,7 +74,7 @@ func (t *monitorTunnelsTask) Run(ctx context.Context) error {
 			if resp.StatusCode >= 500 || err != nil { // for test: resp.StatusCode == 401 ||
 				log.Warnf("Tunnel '%s' does not exist. Http status: %s, reason: %v", tun.Name(), resp.Status, err)
 			} else { // even 40x range is success
-				log.Infof("Tunnel '%s' connectivity is succeded: http status: %s", tun.Name(), resp.Status)
+				log.Infof("Tunnel '%s' connectivity is succeeded: http status: %s", tun.Name(), resp.Status)
 				defer resp.Body.Close()
 				isActive = true
 			}
@@ -99,7 +108,6 @@ func restartTunnel(tun tunnel.Tunnel, log logger.Logger) error {
 	tunnelType := tun.Type()
 	newTunnel := tunnel.CreateTunnel(tunnelType, opts)
 
-	// Start the tunnel
 	if err := newTunnel.Run(); err != nil {
 		log.Errorf("Failed to run recreated tunnel: %v", err)
 		return err

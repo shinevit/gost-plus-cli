@@ -188,9 +188,9 @@ func deleteTunnel(id string) {
 // Lists all configured tunnels
 func listAllTunnels() {
 	fmt.Println("Available tunnels:")
-	fmt.Println("-------------------------------------------------------------------------")
-	fmt.Printf("%-36s %-20s %-10s %-10s\n", "ID", "NAME", "TYPE", "STATUS")
-	fmt.Println("-------------------------------------------------------------------------")
+	fmt.Println("------------------------------------------------------------------------------")
+	fmt.Printf("%-38s %-20s %-10s %-10s\n", "ID", "SUBDOMAIN", "TYPE", "STATUS")
+	fmt.Println("------------------------------------------------------------------------------")
 
 	for i := range tunnel.Count() {
 		t := tunnel.GetIndex(i)
@@ -199,9 +199,9 @@ func listAllTunnels() {
 		}
 
 		status := strings.ToUpper(string(t.Status().State()))
-		fmt.Printf("%-36s %-20s %-10s %-10s\n", t.ID(), t.Name(), t.Type(), status)
+		fmt.Printf("%-38s %-20s %-10s %-10s\n", t.ID(), t.Name(), t.Type(), status)
 	}
-	fmt.Println("-------------------------------------------------------------------------")
+	fmt.Println("------------------------------------------------------------------------------")
 }
 
 // Creates and runs a new tunnel based on command line flags
@@ -340,7 +340,7 @@ func cleanupAndExit(createNewTunnel bool, newTunnel tunnel.Tunnel) {
 }
 
 func startTunnelMonitor(ctx context.Context, interval time.Duration) {
-	err := runner.Exec(ctx, task.MonitorTunnels(),
+	err := runner.Exec(ctx, task.NewMonitorTask(),
 		runner.WithAsync(true),
 		runner.WithInterval(interval),
 		runner.WithCancel(true),

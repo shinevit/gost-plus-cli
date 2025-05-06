@@ -102,3 +102,39 @@ tail -f /Users/vitalii/Library/Application\ Support/gost.plus/logs/gost-plus.log
 ```bash
 tail -f /Users/vitalii/Library/Application\ Support/gost.plus/logs/gost-plus.log | jq -c .
 ```
+
+## Unit Testing
+
+### Running Tests
+
+```bash
+# To run all Unit tests:
+    xgo test -v ./tests/
+
+# To run specific Unit tests on a file:
+    xgo test -v ./tests/stats_test.go
+```
+
+Start tests explorer on web browser:
+```bash
+    xgo e
+```
+
+### Test Coverage
+
+Check test coverage with the following commands:
+
+```bash
+# Generate coverage profile
+    xgo test -cover -coverpkg=./... -coverprofile=coverage.out ./...
+# or
+    xgo test -cover -coverpkg=./runner/task/... -coverprofile=coverage.out ./...
+
+# View coverage on Web browser
+    go tool cover -html=coverage.out
+# or view the coverage on terminal
+    go tool cover -func=coverage.out
+
+# Save coverage report to HTML file
+    go tool cover -html=coverage.out -o coverage.html
+```

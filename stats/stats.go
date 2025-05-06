@@ -2,12 +2,16 @@ package stats
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/go-gost/gost.plus/config"
 	"github.com/go-gost/gost.plus/tunnel"
 )
+
+var StdOutWriter io.Writer = os.Stdout
 
 type TunnelStats struct {
 	UploadSpeed, DownloadSpeed float64
@@ -32,14 +36,12 @@ func DisplayStats(done chan struct{}, interval time.Duration) {
 
 	// Clear the terminal line and move cursor to beginning
 	clearLine := func() {
-		fmt.Printf("\033[2K\r")
+		fmt.Fprintf(StdOutWriter, "\033[2K\r")
 	}
 
-	// Get active tunnel count
 	activeTunnels := getActiveTunnelCount()
 
-	// Print initial header
-	fmt.Printf("Monitoring %d active tunnels. Stats will appear below:\n", activeTunnels)
+	fmt.Fprintf(StdOutWriter, "Monitoring %d active tunnels. Stats will appear below:\n", activeTunnels)
 	lastNumLines := 0
 
 	// Store last non-zero transfer rates for each tunnel
@@ -50,7 +52,8 @@ func DisplayStats(done chan struct{}, interval time.Duration) {
 		case <-ticker.C:
 			// Move cursor up for each line we printed previously
 			if lastNumLines > 0 {
-				fmt.Printf("\033[%dA", lastNumLines)
+
+				fmt.Fprintf(StdOutWriter, "\033[%dA", lastNumLines)
 			}
 
 			// Count active tunnels and print stats
@@ -63,7 +66,7 @@ func DisplayStats(done chan struct{}, interval time.Duration) {
 				}
 
 				stats := t.Stats()
-				currentStats := getCurentStats(stats)
+				currentStats := getCurrentStats(stats)
 
 				// Get or initialize last memoStats
 				tunnelID := t.ID()
@@ -78,7 +81,7 @@ func DisplayStats(done chan struct{}, interval time.Duration) {
 
 				clearLine()
 
-				fmt.Printf("[%s-%s] Conn: %d/%d | Transfer: ↑ %.2f KB/s%s ↓ %.2f KB/s%s | Total: ↑ %.2f MB ↓ %.2f MB | Err: %d\n",
+				fmt.Fprintf(StdOutWriter, "[%s-%s] Conn: %d/%d | Transfer: ↑ %.2f KB/s%s ↓ %.2f KB/s%s | Total: ↑ %.2f MB ↓ %.2f MB | Err: %d\n",
 					t.Name(), strings.ToUpper(t.Type()),
 					stats.CurrentConns, stats.TotalConns,
 					displayStats.UploadSpeed, uploadIndicator,
@@ -99,7 +102,7 @@ func DisplayStats(done chan struct{}, interval time.Duration) {
 }
 
 // Calculate current rates, cumulative Tx/Rx sizes
-func getCurentStats(stats config.ServiceStats) TunnelStats {
+func getCurrentStats(stats config.ServiceStats) TunnelStats {
 	return TunnelStats{
 		float64(stats.OutputRateBytes) / 1024,
 		float64(stats.InputRateBytes) / 1024,
