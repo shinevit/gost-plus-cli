@@ -14,7 +14,8 @@ It enables developers _ngrok_-like functionality exposing local HTTP resources t
 - 🚀 Zero Configuration Mode: Start tunneling with a single command
 - 🔧 Configurable & Scriptable: YAML config support and CLI flags
 - 💊 Tunnel monitoring & Channel Self-recovering
-- 🛠️ Integrated Logging & Stats: Real-time connection metrics and JSON logging for diagnostics.
+- 🛠️ Integrated Logging & Stats: Real-time connection metrics and JSON logging for diagnostics
+- ⚙️ Systemd service integration for Linux.
 
 ## Use Cases:
 - IoT device connectivity on edge devices such as Raspberry Pi
@@ -68,6 +69,12 @@ gost-tunnel
 ```bash
 # Linux
 tail -f /home/[user]/.config/gost.plus/logs/gost-plus.log | jq -C .
+```
+
+4. Run it as a systemd service in the background on Linux (optional):
+```bash
+chmod +x ./install.sh
+./install.sh
 ```
 
 ### Commands:

@@ -1,0 +1,19 @@
+[Unit]
+Description=GOST+ Tunnel
+ConditionPathExists=/usr/local/bin/gost-tunnel
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/gost-tunnel --no-stats > /dev/null 2>&1
+KillMode=process
+Restart=on-failure
+RestartSec=5s
+User=pi
+Group=pi
+WorkingDirectory=/home/pi
+Environment="HOME=/home/pi"
+Environment="USER=pi"
+
+[Install]
+WantedBy=multi-user.target
