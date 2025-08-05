@@ -1,47 +1,38 @@
-# GOST-PLUS App in UI and console mode
+# GOST-PLUS CLI Tunnel
 
-A cross-platform GUI client for [GOST.PLUS](https://gost.plus) built with [gioui](https://gioui.org).
+A cross-platform command-line client designed to tunnel local network services securely to the public internet using the [GOST.PLUS](https://gost.plus) infrastructure.<br>
 
-## Features
+It enables developers _ngrok_-like functionality exposing local HTTP resources through encrypted tunnels with Basic Auth and minimal configuration.
 
-### File Tunnel
+## Supported tunnels
+* File Tunnel - exposes local files to the public network
+* HTTP Tunnel - exposes local HTTP service to the public network
 
-Expose local files to the public network.
+## Key Features:
+- 🔒 Secure Tunnels: TLS-encrypted connections with Basic Auth using GOST.PLUS relay nodes
+- 💻 Cross-Platform Support: Runs seamlessly on Linux, macOS, and Windows
+- 🚀 Zero Configuration Mode: Start tunneling with a single command
+- 🔧 Configurable & Scriptable: YAML config support and CLI flags
+- 💊 Tunnel monitoring & Channel Self-recovering
+- 🛠️ Integrated Logging & Stats: Real-time connection metrics and JSON logging for diagnostics.
 
-<img src="assets/file-tunnel.gif">
-
-### HTTP Tunnel
-
-Expose local HTTP service to the public network.
-
-<img src="assets/http-tunnel.gif">
-
-### TCP Tunnel
-
-Expose local TCP service to the public network.
-
-<img src="assets/tcp-tunnel.gif">
-
-### UDP Tunnel
-
-Expose local UDP service to the public network.
-
-<img src="assets/udp-tunnel.gif">
+## Use Cases:
+- IoT device connectivity on edge devices such as Raspberry Pi
+- Ideal for rapid prototyping
+- Webhook testing and remote access
+- Private API exposure for collaborators
 
 ## Screenshot
 
-### Desktop
+### Terminal
 
-<img src="assets/list.png" width="512" />
-<img src="assets/menu.png" width="512" />
-<img src="assets/add.png" width="512" />
-<img src="assets/edit.png" width="512" />
+Running with stats
 
-### Mobile
+<img src="assets/tunnel-run-stats.png" width="512" />
 
-<img src="assets/list-android.png" width="512" />
-<img src="assets/add-android.png" width="512" />
-<img src="assets/edit-android.png" width="512" />
+Logging output
+
+<img src="assets/tunnel-logging.png" width="512" />
 
 
 ### Build Console App:
@@ -51,7 +42,35 @@ go build -ldflags="-s -w" -o gost-tunnel main.go
 make
 ```
 
-### Usage examples on CLI:
+### Get started
+1. Generate a secure 12-character password:
+```bash
+openssl rand -base64 12
+```
+
+2. Create and start a tunnel (feel free to create multiple ones):
+```bash
+# for the first time
+gost-tunnel --local 127.0.0.1:8080 \
+      --tunnel_type http \
+      --name rpi-service \
+      --username user \
+      --password my_password \
+      --stats-interval 1s
+
+# next time just run
+gost-tunnel
+```
+
+**Note:** It's tested on `Raspberry Pi Zero 2W` and macOS hosts. Use it on your own risk.
+
+3. Watch logs with `jq`:
+```bash
+# Linux
+tail -f /home/[user]/.config/gost.plus/logs/gost-plus.log | jq -C .
+```
+
+### Commands:
 
 ```bash
 # Show a help for the application
@@ -82,25 +101,24 @@ gost-tunnel --version
 ### App related folders and configuration
 
 **MacOS**
-- app dir:
-/Users/vitalii/Library/Application\ Support/gost.plus
+- app dir: /Users/[user]/Library/Application\ Support/gost.plus
+- app configuration file: /Users/[user]/Library/Application\ Support/gost.plus/config.yml
+- app log file: /Users/[user]/Library/Application\ Support/gost.plus/logs/gost-plus.log
 
-- app configuration file:
-/Users/vitalii/Library/Application\ Support/gost.plus/config.yml
-
-- app log file:
-/Users/vitalii/Library/Application\ Support/gost.plus/logs/gost-plus.log
-
+**Linux**
+- app dir: /home/[user]/.config/gost.plus
+- app configuration file: /home/[user]/.config/gost.plus/config.yml
+- app log file: /home/[user]/.config/gost.plus/logs/gost-plus.log
 
 ### Log monitoring
-- Keep track logs with pretty formatting:
+- Keep track pretty formatted logs:
 ```bash
-tail -f /Users/vitalii/Library/Application\ Support/gost.plus/logs/gost-plus.log | jq -C .
+tail -f /Users/[user]/Library/Application\ Support/gost.plus/logs/gost-plus.log | jq -C .
 ```
 
 - Keep track logs without formatting
 ```bash
-tail -f /Users/vitalii/Library/Application\ Support/gost.plus/logs/gost-plus.log | jq -c .
+tail -f /Users/[user]/Library/Application\ Support/gost.plus/logs/gost-plus.log | jq -c .
 ```
 
 ## Unit Testing
@@ -109,15 +127,15 @@ tail -f /Users/vitalii/Library/Application\ Support/gost.plus/logs/gost-plus.log
 
 ```bash
 # To run all Unit tests:
-    xgo test -v ./tests/
+xgo test -v ./tests/
 
 # To run specific Unit tests on a file:
-    xgo test -v ./tests/stats_test.go
+xgo test -v ./tests/stats_test.go
 ```
 
 Start tests explorer on web browser:
 ```bash
-    xgo e
+xgo e
 ```
 
 ### Test Coverage
@@ -126,15 +144,15 @@ Check test coverage with the following commands:
 
 ```bash
 # Generate coverage profile
-    xgo test -cover -coverpkg=./... -coverprofile=coverage.out ./...
+xgo test -cover -coverpkg=./... -coverprofile=coverage.out ./...
 # or
-    xgo test -cover -coverpkg=./runner/task/... -coverprofile=coverage.out ./...
+xgo test -cover -coverpkg=./runner/task/... -coverprofile=coverage.out ./...
 
 # View coverage on Web browser
-    go tool cover -html=coverage.out
+go tool cover -html=coverage.out
 # or view the coverage on terminal
-    go tool cover -func=coverage.out
+go tool cover -func=coverage.out
 
 # Save coverage report to HTML file
-    go tool cover -html=coverage.out -o coverage.html
+go tool cover -html=coverage.out -o coverage.html
 ```
