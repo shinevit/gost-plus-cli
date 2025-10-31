@@ -251,6 +251,10 @@ func (s *udpEntryPoint) IsClosed() bool {
 	}
 }
 
+func (s *udpEntryPoint) IsActive() bool {
+	return isActive(s)
+}
+
 func (s *udpEntryPoint) setErr(err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

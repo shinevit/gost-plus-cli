@@ -291,6 +291,50 @@ func (_c *MockTunnel_ID_Call) RunAndReturn(run func() string) *MockTunnel_ID_Cal
 	return _c
 }
 
+// IsActive provides a mock function for the type MockTunnel
+func (_mock *MockTunnel) IsActive() bool {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsActive")
+	}
+
+	var r0 bool
+	if returnFunc, ok := ret.Get(0).(func() bool); ok {
+		r0 = returnFunc()
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	return r0
+}
+
+// MockTunnel_IsActive_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsActive'
+type MockTunnel_IsActive_Call struct {
+	*mock.Call
+}
+
+// IsActive is a helper method to define mock.On call
+func (_e *MockTunnel_Expecter) IsActive() *MockTunnel_IsActive_Call {
+	return &MockTunnel_IsActive_Call{Call: _e.mock.On("IsActive")}
+}
+
+func (_c *MockTunnel_IsActive_Call) Run(run func()) *MockTunnel_IsActive_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockTunnel_IsActive_Call) Return(b bool) *MockTunnel_IsActive_Call {
+	_c.Call.Return(b)
+	return _c
+}
+
+func (_c *MockTunnel_IsActive_Call) RunAndReturn(run func() bool) *MockTunnel_IsActive_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // IsClosed provides a mock function for the type MockTunnel
 func (_mock *MockTunnel) IsClosed() bool {
 	ret := _mock.Called()

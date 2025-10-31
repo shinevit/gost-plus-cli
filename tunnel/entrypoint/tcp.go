@@ -247,6 +247,10 @@ func (s *tcpEntryPoint) IsClosed() bool {
 	}
 }
 
+func (s *tcpEntryPoint) IsActive() bool {
+	return isActive(s)
+}
+
 func (s *tcpEntryPoint) setErr(err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

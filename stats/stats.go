@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/go-gost/gost.plus/config"
 	"github.com/go-gost/gost.plus/tunnel"
+	"github.com/go-gost/gost.plus/tunnel/entrypoint"
+	fp "github.com/go-gost/gost.plus/utils/fp/slice"
 )
 
 var StdOutWriter io.Writer = os.Stdout
@@ -18,15 +21,16 @@ type TunnelStats struct {
 	TotalUpload, TotalDownload float64
 }
 
-func getActiveTunnelCount() int {
-	count := 0
-	for i := range tunnel.Count() {
-		t := tunnel.GetIndex(i)
-		if t != nil && !t.IsClosed() {
-			count++
-		}
-	}
-	return count
+func getActiveTunnels() uint64 {
+	return fp.Count(tunnel.GetAll(), func(t tunnel.Tunnel) bool {
+		return t != nil && t.IsActive()
+	})
+}
+
+func getActiveEntrypoints() uint64 {
+	return fp.Count(entrypoint.GetAll(), func(t entrypoint.EntryPoint) bool {
+		return t != nil && t.IsActive()
+	})
 }
 
 // Shows statistics about active tunnels
@@ -39,11 +43,9 @@ func DisplayStats(done chan struct{}, interval time.Duration) {
 		fmt.Fprintf(StdOutWriter, "\033[2K\r")
 	}
 
-	activeTunnels := getActiveTunnelCount()
+	showMonitoringTitle()
 
-	fmt.Fprintf(StdOutWriter, "Monitoring %d active tunnels. Stats will appear below:\n", activeTunnels)
 	lastNumLines := 0
-
 	// Store last non-zero transfer rates for each tunnel
 	lastRates := make(map[string]TunnelStats)
 
@@ -52,15 +54,14 @@ func DisplayStats(done chan struct{}, interval time.Duration) {
 		case <-ticker.C:
 			// Move cursor up for each line we printed previously
 			if lastNumLines > 0 {
-
 				fmt.Fprintf(StdOutWriter, "\033[%dA", lastNumLines)
 			}
 
 			// Count active tunnels and print stats
 			lineCount := 0
 
-			for i := range tunnel.Count() {
-				t := tunnel.GetIndex(i)
+			observableItems := slices.Concat(tunnel.GetAll(), entrypoint.GetAll())
+			for _, t := range observableItems {
 				if t == nil || t.IsClosed() {
 					continue
 				}
@@ -99,6 +100,33 @@ func DisplayStats(done chan struct{}, interval time.Duration) {
 			return
 		}
 	}
+}
+
+func showMonitoringTitle() {
+	var message string
+	staticMessage := "Statistics is updating:"
+	activeTunnels := getActiveTunnels()
+	activeEntrypoints := getActiveEntrypoints()
+	if activeTunnels > 0 && activeEntrypoints > 0 {
+		message = fmt.Sprintf("Monitoring %d tunnels and %d entrypoints. %s\n",
+			activeTunnels,
+			activeEntrypoints,
+			staticMessage,
+		)
+	} else if activeTunnels > 0 && activeEntrypoints == 0 {
+		message = fmt.Sprintf("Monitoring %d tunnels. %s\n",
+			activeTunnels,
+			staticMessage,
+		)
+	} else if activeTunnels == 0 && activeEntrypoints > 0 {
+		message = fmt.Sprintf("Monitoring %d entrypoints. %s\n",
+			activeEntrypoints,
+			staticMessage,
+		)
+	} else {
+		message = "No items for monitoring"
+	}
+	fmt.Fprint(StdOutWriter, message)
 }
 
 // Calculate current rates, cumulative Tx/Rx sizes

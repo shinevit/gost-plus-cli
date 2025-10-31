@@ -11,7 +11,7 @@
           "name": "",
           "version": ""
         },
-        "description": "CLI client for GOST.PLUS",
+        "description": "GOST.PLUS CLI tunnel",
         "minimum-os": "win7",
         "execution-level": "as invoker",
         "ui-access": false,
@@ -33,22 +33,22 @@
     "#1": {
       "0000": {
         "fixed": {
-          "file_version": "0.3.0.0",
-          "product_version": "0.3.0.0"
+          "file_version": "0.3.3.0",
+          "product_version": "0.3.3.0"
         },
         "info": {
           "0409": {
             "Comments": "",
             "CompanyName": "GOST.PLUS",
-            "FileDescription": "CLI client for GOST.PLUS",
-            "FileVersion": "0.3.0",
-            "InternalName": "gost.plus",
-            "LegalCopyright": "Copyright © 2025 GOST.PLUS",
+            "FileDescription": "GOST.PLUS CLI tunnel",
+            "FileVersion": "0.3.3",
+            "InternalName": "gost-tunnel",
+            "LegalCopyright": "Copyright © 2025 Vitalii Radchenko",
             "LegalTrademarks": "GOST.PLUS",
-            "OriginalFilename": "gost.plus",
+            "OriginalFilename": "gost-tunnel",
             "PrivateBuild": "",
             "ProductName": "GOST.PLUS",
-            "ProductVersion": "0.3.0",
+            "ProductVersion": "0.3.3",
             "SpecialBuild": ""
           }
         }

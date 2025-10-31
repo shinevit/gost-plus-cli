@@ -3,6 +3,7 @@ package tunnel
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -14,6 +15,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/service"
 	cfg "github.com/go-gost/gost.plus/config"
+	str "github.com/go-gost/gost.plus/utils/string"
 	xchain "github.com/go-gost/x/chain"
 	"github.com/go-gost/x/config"
 	chain_parser "github.com/go-gost/x/config/parsing/chain"
@@ -138,6 +140,20 @@ func (s *udpTunnel) Run() (err error) {
 		return ErrTunnelClosed
 	}
 
+	instanceLogger := logger.Default().WithFields(map[string]any{
+		"kind":   "instance",
+		"tunnel": s.Type(),
+	})
+	current := s
+	if isTunnelExisting(s) && current.IsActive() {
+		message := fmt.Sprintf("%s, ID: %s", ErrTunnelDuplicateInstance, s.ID())
+		message = str.CapitalizeFirst(message)
+		instanceLogger.Error(message)
+		return errors.New(message)
+	} else {
+		instanceLogger.Infof("New tunnel is allowed to run, ID: %s", s.ID())
+	}
+
 	defer func() {
 		s.setErr(err)
 	}()
@@ -242,6 +258,12 @@ func (s *udpTunnel) IsClosed() bool {
 	default:
 		return false
 	}
+}
+
+func (s *udpTunnel) IsActive() bool {
+	state := getState(s.ID())
+	return state == xservice.StateRunning ||
+		state == xservice.StateReady
 }
 
 func (s *udpTunnel) setErr(err error) {

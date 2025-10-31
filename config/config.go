@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"os"
@@ -119,12 +120,12 @@ type Tunnel struct {
 	Name      string
 	Type      string
 	Endpoint  string
-	Hostname  string `yaml:",omitempty"`
-	Username  string `yaml:",omitempty"`
-	Password  string `yaml:",omitempty"`
-	EnableTLS bool   `yaml:"enableTLS,omitempty"`
-	Keepalive bool   `yaml:",omitempty"`
-	TTL       int    `yaml:"ttl,omitempty"`
+	Hostname  string   `yaml:",omitempty"`
+	Username  string   `yaml:",omitempty"`
+	Password  Password `yaml:",omitempty"`
+	EnableTLS bool     `yaml:"enableTLS,omitempty"`
+	Keepalive bool     `yaml:",omitempty"`
+	TTL       int      `yaml:"ttl,omitempty"`
 
 	Stats     ServiceStats
 	Favorite  bool
@@ -159,7 +160,27 @@ func (c *Config) Write() error {
 		return err
 	}
 
-	return os.WriteFile(filepath.Join(configDir, configFile), buf.Bytes(), 0644)
+	return os.WriteFile(filepath.Join(configDir, configFile), buf.Bytes(), 0600)
+}
+
+// encodePassword encodes a password string to base64
+func encodePassword(password string) string {
+	if password == "" {
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString([]byte(password))
+}
+
+// decodePassword decodes a base64 encoded password string
+func decodePassword(encodedPassword string) (string, error) {
+	if encodedPassword == "" {
+		return "", nil
+	}
+	decoded, err := base64.StdEncoding.DecodeString(encodedPassword)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode password: %w", err)
+	}
+	return string(decoded), nil
 }
 
 type ServiceStats struct {
@@ -172,4 +193,30 @@ type ServiceStats struct {
 	InputRateBytes  uint64
 	OutputBytes     uint64
 	OutputRateBytes uint64
+}
+
+// Password represents an encoded password that handles base64 encoding/decoding
+type Password string
+
+// String returns the decoded password string
+func (p Password) String() string {
+	if p == "" {
+		return ""
+	}
+	decoded, err := decodePassword(string(p))
+	if err != nil {
+		// If decoding fails, return the original string (for backward compatibility)
+		return string(p)
+	}
+	return decoded
+}
+
+// Set encodes and sets the password
+func (p *Password) Set(password string) {
+	*p = Password(encodePassword(password))
+}
+
+// IsEmpty returns true if the password is empty
+func (p Password) IsEmpty() bool {
+	return p.String() == ""
 }

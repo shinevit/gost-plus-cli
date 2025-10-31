@@ -3,6 +3,7 @@ package tunnel
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -14,6 +15,7 @@ import (
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/core/service"
 	cfg "github.com/go-gost/gost.plus/config"
+	str "github.com/go-gost/gost.plus/utils/string"
 	xauth "github.com/go-gost/x/auth"
 	xchain "github.com/go-gost/x/chain"
 	"github.com/go-gost/x/config"
@@ -115,7 +117,7 @@ func (s *httpTunnel) init() error {
 	if s.opts.Username != "" {
 		node.HTTP.Auth = &config.AuthConfig{
 			Username: s.opts.Username,
-			Password: s.opts.Password,
+			Password: s.opts.Password.String(),
 		}
 	}
 	if s.opts.Hostname != "" {
@@ -153,6 +155,22 @@ func (s *httpTunnel) init() error {
 func (s *httpTunnel) Run() (err error) {
 	if s.IsClosed() {
 		return ErrTunnelClosed
+	}
+
+	instanceLogger := logger.Default().WithFields(map[string]any{
+		"kind":   "instance",
+		"tunnel": s.Type(),
+	})
+	//! It's not allowed to start the same instance of tunnel with the same ID
+	// Only a newer active instance of tunnel is allowed
+	current := s
+	if isTunnelExisting(s) && current.IsActive() {
+		message := fmt.Sprintf("%v, ID: %s", ErrTunnelDuplicateInstance, s.ID())
+		message = str.CapitalizeFirst(message)
+		instanceLogger.Error(message)
+		return errors.New(message)
+	} else {
+		instanceLogger.Infof("New tunnel is allowed to run, ID: %s", s.ID())
 	}
 
 	defer func() {
@@ -275,6 +293,13 @@ func (s *httpTunnel) IsClosed() bool {
 	default:
 		return false
 	}
+}
+
+// Checks if this tunnel is already running
+func (s *httpTunnel) IsActive() bool {
+	state := getState(s.ID())
+	return state == xservice.StateRunning ||
+		state == xservice.StateReady
 }
 
 func (s *httpTunnel) setErr(err error) {

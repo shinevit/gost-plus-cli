@@ -1,3 +1,4 @@
+sudo systemctl stop gost.plus
 sudo cp ./gost-tunnel /usr/local/bin/
 sudo cp ./gost.plus.service /etc/systemd/system/gost.plus.service
 sudo systemctl daemon-reload

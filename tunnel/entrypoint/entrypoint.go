@@ -2,11 +2,13 @@ package entrypoint
 
 import (
 	"errors"
+	"slices"
 	"sync"
 
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/gost.plus/config"
 	"github.com/go-gost/gost.plus/tunnel"
+	xservice "github.com/go-gost/x/service"
 )
 
 const (
@@ -96,7 +98,7 @@ func Delete(id string) {
 	}
 }
 
-func LoadConfig() {
+func InitFromConfig() {
 	for _, cfg := range config.Get().EntryPoints {
 		if cfg == nil {
 			continue
@@ -134,7 +136,7 @@ func SaveConfig() error {
 	cfg := config.Get()
 	cfg.EntryPoints = nil
 
-	for i := 0; i < Count(); i++ {
+	for i := range Count() {
 		ep := GetIndex(i)
 		if ep == nil {
 			continue
@@ -167,6 +169,12 @@ func SaveConfig() error {
 	return nil
 }
 
+func GetAll() []EntryPoint {
+	entryPoints.mux.RLock()
+	defer entryPoints.mux.RUnlock()
+	return slices.Clone(entryPoints.list)
+}
+
 func createEntryPoint(st string, opts tunnel.Options) (ep EntryPoint) {
 	options := []tunnel.Option{
 		tunnel.IDOption(opts.ID),
@@ -174,9 +182,11 @@ func createEntryPoint(st string, opts tunnel.Options) (ep EntryPoint) {
 		tunnel.EndpointOption(opts.Endpoint),
 		tunnel.HostnameOption(opts.Hostname),
 		tunnel.UsernameOption(opts.Username),
-		tunnel.PasswordOption(opts.Password),
 		tunnel.EnableTLSOption(opts.EnableTLS),
 		tunnel.CreatedAtOption(opts.CreatedAt),
+	}
+	if !opts.Password.IsEmpty() {
+		options = append(options, tunnel.PasswordOption(opts.Password.String()))
 	}
 	switch st {
 	case TCPEntryPoint:
@@ -189,4 +199,12 @@ func createEntryPoint(st string, opts tunnel.Options) (ep EntryPoint) {
 
 	ep.SetStats(opts.Stats)
 	return
+}
+
+func isActive(en EntryPoint) bool {
+	if status := en.Status(); status != nil {
+		return status.State() == xservice.StateRunning ||
+			status.State() == xservice.StateReady
+	}
+	return false
 }

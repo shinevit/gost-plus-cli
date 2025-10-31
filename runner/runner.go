@@ -25,6 +25,7 @@ type taskState struct {
 type Options struct {
 	Async    bool
 	Interval time.Duration
+	Delay    time.Duration
 	Cancel   bool
 }
 
@@ -39,6 +40,12 @@ func WithAsync(aync bool) Option {
 func WithInterval(interval time.Duration) Option {
 	return func(opts *Options) {
 		opts.Interval = interval
+	}
+}
+
+func WithDelay(delay time.Duration) Option {
+	return func(opts *Options) {
+		opts.Delay = delay
 	}
 }
 
@@ -142,7 +149,19 @@ func (r *Runner) Exec(ctx context.Context, task Task, opts ...Option) error {
 			}
 		}
 
-		run()
+		// If there's an initial delay, wait before first execution
+		delay := options.Delay
+		if delay > 0 {
+			log.Debugf("task %s delayed by %v", task.ID(), delay)
+			select {
+			case <-time.After(delay):
+				run()
+			case <-ctx.Done():
+				return
+			}
+		} else {
+			run()
+		}
 
 		interval := options.Interval
 		if interval <= 0 {

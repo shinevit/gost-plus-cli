@@ -5,6 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"slices"
+
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/gost.plus/config"
 	xconfig "github.com/go-gost/x/config"
@@ -27,7 +29,8 @@ const (
 )
 
 var (
-	ErrTunnelClosed = errors.New("tunnel closed")
+	ErrTunnelClosed            = errors.New("tunnel closed")
+	ErrTunnelDuplicateInstance = errors.New("duplicate of tunnel instance")
 )
 
 type Options struct {
@@ -36,7 +39,7 @@ type Options struct {
 	Endpoint  string
 	Hostname  string
 	Username  string
-	Password  string
+	Password  config.Password
 	EnableTLS bool
 	Keepalive bool
 	TTL       int
@@ -78,7 +81,7 @@ func UsernameOption(username string) Option {
 
 func PasswordOption(password string) Option {
 	return func(opts *Options) {
-		opts.Password = password
+		opts.Password.Set(password)
 	}
 }
 
@@ -125,6 +128,7 @@ type Tunnel interface {
 	IsFavorite() bool
 	Close() error
 	IsClosed() bool
+	IsActive() bool
 	Err() error
 }
 
@@ -309,9 +313,11 @@ func CreateTunnel(st string, opts Options) (t Tunnel) {
 		EndpointOption(opts.Endpoint),
 		HostnameOption(opts.Hostname),
 		UsernameOption(opts.Username),
-		PasswordOption(opts.Password),
 		EnableTLSOption(opts.EnableTLS),
 		CreatedAtOption(opts.CreatedAt),
+	}
+	if !opts.Password.IsEmpty() {
+		options = append(options, PasswordOption(opts.Password.String()))
 	}
 
 	switch st {
@@ -329,4 +335,24 @@ func CreateTunnel(st string, opts Options) (t Tunnel) {
 
 	t.SetStats(opts.Stats)
 	return
+}
+
+func GetAll() []Tunnel {
+	tunnels.mux.RLock()
+	defer tunnels.mux.RUnlock()
+	return slices.Clone(tunnels.list)
+}
+
+func getState(id string) xservice.State {
+	if existing := Get(id); existing != nil {
+		if status := existing.Status(); status != nil {
+			return status.State()
+		}
+	}
+	return ""
+}
+
+func isTunnelExisting(tun Tunnel) bool {
+	existing := Get(tun.ID())
+	return existing == tun
 }

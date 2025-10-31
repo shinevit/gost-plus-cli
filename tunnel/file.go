@@ -3,6 +3,7 @@ package tunnel
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	"github.com/go-gost/core/observer/stats"
 	"github.com/go-gost/core/service"
 	cfg "github.com/go-gost/gost.plus/config"
+	str "github.com/go-gost/gost.plus/utils/string"
 	xauth "github.com/go-gost/x/auth"
 	xchain "github.com/go-gost/x/chain"
 	"github.com/go-gost/x/config"
@@ -126,7 +128,7 @@ func (s *fileTunnel) init() error {
 	if s.opts.Username != "" {
 		file.Handler.Auth = &config.AuthConfig{
 			Username: s.opts.Username,
-			Password: s.opts.Password,
+			Password: s.opts.Password.String(),
 		}
 	}
 
@@ -153,6 +155,20 @@ func (s *fileTunnel) init() error {
 func (s *fileTunnel) Run() (err error) {
 	if s.IsClosed() {
 		return ErrTunnelClosed
+	}
+
+	instanceLogger := logger.Default().WithFields(map[string]any{
+		"kind":   "instance",
+		"tunnel": s.Type(),
+	})
+	current := s
+	if isTunnelExisting(s) && current.IsActive() {
+		message := fmt.Sprintf("%v, ID: %s", ErrTunnelDuplicateInstance, s.ID())
+		message = str.CapitalizeFirst(message)
+		instanceLogger.Error(message)
+		return errors.New(message)
+	} else {
+		instanceLogger.Infof("New tunnel is allowed to run, ID: %s", s.ID())
 	}
 
 	defer func() {
@@ -295,6 +311,13 @@ func (s *fileTunnel) IsClosed() bool {
 	default:
 		return false
 	}
+}
+
+func (s *fileTunnel) IsActive() bool {
+	// fmt.Printf("Checking state of tunel %s", s.ID())
+	state := getState(s.ID())
+	return state == xservice.StateRunning ||
+		state == xservice.StateReady
 }
 
 func (s *fileTunnel) setErr(err error) {

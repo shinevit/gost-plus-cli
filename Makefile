@@ -38,20 +38,32 @@ default: $(BINDIR) $(PLATFORM)
 .PHONY: linux-armhf
 linux-armhf: $(BINDIR)
 	@echo "Building for Raspberry Pi (armhf/ARMv7)..."
-	GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=1 go build --ldflags="-s -w" -v -o $(BINDIR)/$(NAME)-$(VERSION)-$@ $(GOFILES)
+	GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 go build --ldflags="-s -w" -v -o $(BINDIR)/$(NAME)-$(VERSION)-$@ $(GOFILES)
 	@echo "Build complete: $(BINDIR)/$(NAME)-$(VERSION)-$@"
+
+.PHONY: linux-armelv6
+linux-armelv6: $(BINDIR)
+		@echo "Building for Raspberry Pi (armel/ARMv6)..."
+		GOOS=linux GOARCH=arm GOARM=6 CGO_ENABLED=0 go build --ldflags="-s -w" -v -o $(BINDIR)/$(NAME)-$(VERSION)-$@ $(GOFILES)
+		@echo "Build complete: $(BINDIR)/$(NAME)-$(VERSION)-$@"
+
+.PHONY: linux-armelv5
+linux-armelv5: $(BINDIR)
+		@echo "Building for Raspberry Pi (armel/ARMv5)..."
+		GOOS=linux GOARCH=arm GOARM=5 CGO_ENABLED=0 go build --ldflags="-s -w" -v -o $(BINDIR)/$(NAME)-$(VERSION)-$@ $(GOFILES)
+		@echo "Build complete: $(BINDIR)/$(NAME)-$(VERSION)-$@"
 
 # Standard targets for other platforms
 .PHONY: linux-amd64
 linux-amd64: $(BINDIR)
 	@echo "Building for Linux (amd64)..."
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=1 go build --ldflags="-s -w" -v -o $(BINDIR)/$(NAME)-$(VERSION)-$@ $(GOFILES)
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build --ldflags="-s -w" -v -o $(BINDIR)/$(NAME)-$(VERSION)-$@ $(GOFILES)
 	@echo "Build complete: $(BINDIR)/$(NAME)-$(VERSION)-$@"
 
 .PHONY: linux-arm64
 linux-arm64: $(BINDIR)
-	@echo "Building for Linux (arm64)..."
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=1 go build --ldflags="-s -w" -v -o $(BINDIR)/$(NAME)-$(VERSION)-$@ $(GOFILES)
+	@echo "Building for Linux (aarch64 v8/9)..."
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build --ldflags="-s -w" -v -o $(BINDIR)/$(NAME)-$(VERSION)-$@ $(GOFILES)
 	@echo "Build complete: $(BINDIR)/$(NAME)-$(VERSION)-$@"
 
 .PHONY: darwin-amd64
@@ -67,12 +79,20 @@ darwin-arm64: $(BINDIR)
 	@echo "Build complete: $(BINDIR)/$(NAME)-$(VERSION)-$@"
 
 # Windows targets
+.PHONY: windows-386
+windows-386: $(BINDIR)
+	@echo "Building for Windows (x86)..."
+	GOOS=windows GOARCH=386 go-winres make --in winres/winres.json --out winres/rsrc
+	@echo "Resource file generated"
+	GOOS=windows GOARCH=386 CGO_ENABLED=0 go build -ldflags="-s -w" -o $(BINDIR)/$(NAME)-$(VERSION)-$@.exe $(GOFILES)
+	@echo "Build complete: $(BINDIR)/$(NAME)-$(VERSION)-$@.exe"
+
 .PHONY: windows-amd64
 windows-amd64: $(BINDIR)
 	@echo "Building for Windows (amd64)..."
 	GOOS=windows GOARCH=amd64 go-winres make --in winres/winres.json --out winres/rsrc
 	@echo "Resource file generated"
-	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w " -o $(BINDIR)/$(NAME)-$(VERSION)-$@.exe $(GOFILES)
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o $(BINDIR)/$(NAME)-$(VERSION)-$@.exe $(GOFILES)
 	@echo "Build complete: $(BINDIR)/$(NAME)-$(VERSION)-$@.exe"
 
 .PHONY: windows-arm64
@@ -119,11 +139,14 @@ help:
 	@echo "------------------------"
 	@echo "Available targets:"
 	@echo "  default       - Build for current platform ($(PLATFORM))"
+	@echo "  linux-armelv5 - Build for Raspberry Pi (ARMv5/armel)"
+	@echo "  linux-armelv6 - Build for Raspberry Pi (ARMv6/armel)"
 	@echo "  linux-armhf   - Build for Raspberry Pi (ARMv7/armhf)"
+	@echo "  linux-arm64   - Build for RPI/Linux ARM64 (ARMv8,9/aarch64)"
 	@echo "  linux-amd64   - Build for Linux AMD64"
-	@echo "  linux-arm64   - Build for Linux ARM64"
 	@echo "  darwin-amd64  - Build for macOS AMD64"
 	@echo "  darwin-arm64  - Build for macOS ARM64"
+	@echo "  windows-386   - Build for Windows x86"
 	@echo "  windows-amd64 - Build for Windows AMD64"
 	@echo "  windows-arm64 - Build for Windows ARM64"
 	@echo "  package       - Package the build for current platform"

@@ -28,7 +28,7 @@ func (t *updateStatsTask) Run(context.Context) error {
 }
 
 func (t *updateStatsTask) updateTunnel() error {
-	for i := 0; i < tunnel.Count(); i++ {
+	for i := range tunnel.Count() {
 		tun := tunnel.GetIndex(i)
 		if tun == nil {
 			continue
@@ -82,7 +82,7 @@ func (t *updateStatsTask) updateTunnel() error {
 }
 
 func (t *updateStatsTask) updateEntrypoint() error {
-	for i := 0; i < entrypoint.Count(); i++ {
+	for i := range entrypoint.Count() {
 		ep := entrypoint.GetIndex(i)
 		if ep == nil {
 			continue
