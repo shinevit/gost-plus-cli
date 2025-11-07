@@ -192,3 +192,27 @@ func TestFold(t *testing.T) {
 		assert.Equal(t, "default", result)
 	})
 }
+
+func TestCond(t *testing.T) {
+	t.Run("condition true", func(t *testing.T) {
+		opt1 := opt.Cond(true, "test")
+		assert.NotNil(t, opt1, "Option should not be nil")
+		assert.Equal(t, "test", opt1.GetOrElse(""), "Should return the original value")
+	})
+
+	t.Run("condition false", func(t *testing.T) {
+		opt2 := opt.Cond(false, "fail")
+		assert.Equal(t, opt2.GetOrElse("fail"), "fail", "Option should be nil")
+	})
+
+	t.Run("condition true with zero value", func(t *testing.T) {
+		opt3 := opt.Cond(true, 0)
+		assert.NotNil(t, opt3, "Option should not be nil")
+		assert.Equal(t, 0, opt3.GetOrElse(1), "Should return the original value")
+	})
+
+	t.Run("condition false with zero value", func(t *testing.T) {
+		opt4 := opt.Cond(false, 0)
+		assert.Equal(t, opt4.GetOrElse(0), 0, "Option should be nil")
+	})
+}

@@ -28,8 +28,7 @@ func (t *updateStatsTask) Run(context.Context) error {
 }
 
 func (t *updateStatsTask) updateTunnel() error {
-	for i := range tunnel.Count() {
-		tun := tunnel.GetIndex(i)
+	for _, tun := range tunnel.GetAll() {
 		if tun == nil {
 			continue
 		}

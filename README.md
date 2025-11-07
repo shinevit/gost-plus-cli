@@ -1,16 +1,21 @@
 # GOST-PLUS CLI Tunnel
 
-A high-performance, cross-platform and secured command-line client designed to tunnel local network services securely to the public network using the [GOST.PLUS](https://gost.plus) infrastructure.<br>
+Instantly and securely share any local service with the world. `gost-tunnel` is user-friendly and a powerful, cross-platform CLI that creates encrypted tunnels to the [GOST.PLUS](https://gost.plus) network. Expose local web servers, SSH, databases, or share entire folders with a single command. It delivers a fast, reliable, ngrok-like experience with zero-config simplicity.
 
-It provides _ngrok_-like functionality exposing local HTTP, TCP, UDP resources and files  through encrypted tunnels with a minimal configuration.
+## Features:
+💻 **Cross-Platform Support**: Runs/builds seamlessly on/for Linux, macOS, and Windows<br>
+🚀 **Zero Configuration Mode**: Start tunneling with a single command<br>
+🔧 **Configurable & Scriptable**: YAML config support and CLI flags<br>
+💊 **Tunnel Monitoring & Auto-Recovery**: Automatic tunnel health monitoring and self-recovering<br>
+🛠️ **Integrated Logging & Stats**: Real-time connection metrics and JSON logging for diagnostics<br>
+⚙️ **Systemd Service Integration**: Easy deployment as a system service on Linux<br>
 
-## Definitions
-
-### Tunnels
-Tunnels are outbound connections from your local address to the GOST.PLUS infrastructure. They expose your local services to the internet through secure, encrypted connections.
-
-### Entrypoints
-Entrypoints are the receiving ends that connect to your tunnels. They listen to a local address, connect to a remote tunnel and forward incoming traffic through the established tunnel to the mapped local address. Each entrypoint must be paired with a tunnel using a unique tunnel ID.
+## 💡 Use Cases:
+✅ IoT device connectivity on edge devices such as Raspberry Pi<br>
+✅ Ideal for rapid development prototyping<br>
+✅ Webhook testing and remote access to local environments<br>
+✅ Private API exposure<br>
+✅ Secure file sharing for collaboration<br>
 
 ## Supported Tunnels:
 * **HTTP Tunnel** - Exposes local web servers
@@ -22,30 +27,25 @@ Entrypoints are the receiving ends that connect to your tunnels. They listen to 
 * **TCP Entrypoint** - Connects to the remote address of a TCP tunnel by tunnel id
 * **UDP Entrypoint** - Connects to the remote address of a UDP tunnel by tunnel id
 
-## Features:
-- 💻 **Cross-Platform Support**: Runs and builds seamlessly on Linux, macOS, and Windows
-- 🚀 **Zero Configuration Mode**: Start tunneling with a single command
-- 🔧 **Configurable & Scriptable**: YAML config support and CLI flags
-- 💊 **Tunnel Monitoring & Auto-Recovery**: Automatic tunnel health monitoring and self-recovering
-- 🛠️ **Integrated Logging & Stats**: Real-time connection metrics and JSON logging for diagnostics
-- ⚙️ **Systemd Service Integration**: Easy deployment as a system service on Linux
-
-## Security
+## 🔐 Security
 - **End-to-End Encryption**: All tunnel traffic is encrypted
 - **Authentication**: Built-in support with username/password authentication for HTTP and File tunnel types
-- **TLS Support**: Secure your HTTP tunnels with TLS encryption
-- **Password encoding**: Password on a configuration file is automatically encoded in Base64 format for basic protection against casual viewing.
+- **TLS Support**: Expose your HTTPS services with TLS tunnel
+- **Password encoding**: Password on a configuration file is automatically encoded in Base64 format for basic protection against casual viewing, and passed through system environment variable
 
-## Use Cases:
-- IoT device connectivity on edge devices such as Raspberry Pi
-- Ideal for rapid prototyping
-- Webhook testing and remote access to local environments
-- Private API exposure
-- Secure file sharing for collaboration
+## 📝 Definitions
+
+### Tunnels
+
+Tunnels are outbound connections from your local address to the GOST.PLUS infrastructure. They expose your local services to the internet through secure, encrypted connections.
+
+
+### Entrypoints
+Entrypoints are the receiving ends that connect to your tunnels. They listen to a local address, connect to a remote tunnel and forward incoming traffic through the established tunnel to the mapped local address. Each entrypoint must be paired with a tunnel using a unique tunnel ID.
 
 ## Screenshots
 
-### Running with stats
+### Running with statistics
 
 <img src="assets/tunnel-run-stats.png" width="512" />
 
@@ -53,207 +53,206 @@ Entrypoints are the receiving ends that connect to your tunnels. They listen to 
 
 <img src="assets/tunnel-logging.png" width="512" />
 
+## 📦 Build
 
-### Build Console App:
+### Prerequisites
+-   **Go**: Ensure you have Go installed (version 1.21 or higher recommended).
+-   **go-winres**: For Windows builds, install `go-winres` to embed version information and an icon:
+    ```bash
+    go install github.com/cratonica/go-winres@latest
+    ```
+
+### Building for the current platform
 ```bash
 go build -ldflags="-s -w" -o gost-tunnel main.go
-# or for the current platform
-make 
-# see Makefile for more details
+# or build for the current platform
+make
 ```
 
-### Get started
-1. Generate a secure 12-character password:
+### Cross-Platform Build
+To build for specific platforms, use the `make` commands:
+
+-   **Linux (64-bit)**:
+    ```bash
+    make linux-amd64
+    ```
+-   **Raspberry Pi (ARMv7/armhf)**:
+    ```bash
+    make linux-armhf
+    ```
+-   **macOS (64-bit)**:
+    ```bash
+    make darwin-amd64
+    # For Apple Silicon (ARM64)
+    make darwin-arm64
+    ```
+-   **Windows (64-bit)**:
+    ```bash
+    make windows-amd64
+    ```
+Refer to [Makefile](Makefile) for more CPU architectures
+
+## 🚀 Get started
+
+1.  **Create and start a HTTP tunnel**:
+    ```bash
+    # Expose a local web server on port 8080
+    gost-tunnel http 8080 -n my-web-server
+    ```
+    Once a tunnel or entrypoint is created, it's started and saved to the configuration.
+
+2.  **Start all saved tunnels and entrypoints**:
+    ```bash
+    # The default command is 'start', which runs all saved configurations
+    gost-tunnel start
+    # or just
+    gost-tunnel
+    # or for a daemon service installed to linux
+    gost-tunnel -no-stats
+    ```
+
+3.  **Using Entrypoints** (Connecting to Remote Tunnels)
+
+    **On Host A (with the service):**
+    ```bash
+    # Create a TCP tunnel to expose the local SSH server (port 22)
+    gost-tunnel tcp 22 -n SSH-Tunnel
+
+    # Note the Tunnel ID from the output, e.g.: "ID: a7a1c126-970b-4886-8ff5-455902abcfd3"
+    ```
+
+    **On Host B (client machine):**
+    ```bash
+    # Create a TCP entrypoint that connects to the tunnel
+    gost-tunnel bind a7a1c126-970b-4886-8ff5-455902abcfd3 -tcp localhost:2222 -n SSH-Access
+
+    # Now you can connect to the remote SSH server via the local port
+    ssh -p 2222 user@localhost
+    ```
+    <details>
+    <summary>Visual workflow of using entrypoints</summary>
+
+    ![User Workflow Diagram](docs/user-workflow_activity-diagram.svg)
+    </details><br>
+
+4.  Run as a systemd service on Linux (optional):
+    ```bash
+    chmod +x ./install.sh
+    ./install.sh
+    ```
+
+## ▶ Commands
+
+Each command provides detailed help with examples.<br>
+To learn more, run any command with the `--help` or `-h` flag (e.g., `gost-tunnel http -h`).
+
+### Tunnel Commands
+-   **`http [host:]port`**: Creates an HTTP tunnel.
+    ```bash
+    # Simple tunnel
+    gost-tunnel http localhost:8080 -n web-app
+    # or for any internal network service
+    gost-tunnel http 192.168.0.100:8080 -n web-app
+
+    # With authentication
+    AUTH_PASSWORD=secret gost-tunnel http 8080 -u my_user -n auth-app
+    ```
+-   **`tls [host:]port`**: Creates a secure HTTPS tunnel.
+    ```bash
+    # With authentication
+    export AUTH_PASSWORD=secret
+    gost-tunnel tls 443 -u my_user -n auth-secure-app
+    ```
+-   **`file <directory>`**: Shares a local directory over an HTTP tunnel.
+    ```bash
+    # With authentication
+    export AUTH_PASSWORD=secret
+    gost-tunnel file . -u my_user -n auth-shared-files
+    ```
+-   **`tcp [host:]port`**: Creates a TCP tunnel for services like SSH or databases.
+    ```bash
+    gost-tunnel tcp 22 -n ssh-access
+    ```
+-   **`udp [host:]port`**: Creates a UDP tunnel for services like DNS or gaming.
+    ```bash
+    gost-tunnel udp 53 -n dns-server
+    ```
+    <details>
+    <summary>Tunnels use case diagram</summary>
+
+    ![Tunnels Commands](docs/tunnels-use-case.svg)
+    </details>
+    <br>
+
+### Entrypoint Command
+-   **`bind <tunnel ID>`**: Binds an existing tunnel to a local TCP or UDP port.
+    ```bash
+    # Bind to a TCP port
+    gost-tunnel bind <ID> -tcp localhost:2222 -n "Unique name"
+
+    # Bind to a UDP port with a TTL
+    gost-tunnel bind <ID> -udp 5353 -ttl 120s -n "Unique name"
+    ```
+
+    <details>
+    <summary>Entrypoints use case diagram</summary>
+
+    ![Entrypoints Commands](docs/entrypoints-use-case.svg)
+    </details>
+    <br>
+
+### Management Commands
+-   **`start [ID or -n name]`**: Starts a saved tunnel or entrypoint by ID or name. If no argument is given, starts all.
+    ```bash
+    gost-tunnel start a7a1c126-970b-4886-8ff5-455902abcfd3
+    # or
+    gost-tunnel start -n web-app
+    ```
+-   **`list, ls`**: Lists all saved tunnels and entrypoints.
+-   **`tunnels, tl`**: Lists only tunnels.
+-   **`entrypoints, el`**: Lists only entrypoints.
+-   **`delete <ID>`, `d <ID>`**: Deletes a tunnel or entrypoint by its ID.
+
+### Informational Commands
+-   **`showConfig, sc`**: Displays the configuration file with sensitive values masked.
+-   **`env`**: Shows relevant environment variables.
+-   **`paths`**: Shows the paths to the configuration and log files.
+
+### Global Options
+-   `--stats-interval <duration>`, `-stats <duration>`: Sets the statistics update interval (default: 1s).
+-   `--monitor-interval <duration>`, `-monitor <duration>`: Sets the connection monitoring interval for tunnels (default: 60s).
+-   `--no-stats`: Disables real-time statistics, useful for daemon mode.
+-   `--help`, `-h`: Shows help for the application or a specific command.
+-   `--version`, `-v`: Shows the application version.
+
+### Advanced Usage
 ```bash
-openssl rand -base64 12
+# Create a secure TLS tunnel with authentication, a custom hostname,
+# and specific monitoring intervals.
+export AUTH_PASSWORD=my_secret_password
+gost-tunnel tls 192.168.0.100:443 -n secure-api -u api-user -hostname api.example.com -stats 2s -monitor 2m
 ```
 
-2. **Create and start a HTTP tunnel**:
-Feel free to create multiple ones.
+## 📁 Configuration and folders
+
+Find the locations of your configuration and a log file by running the `paths` command:
 ```bash
-# for the first time
-gost-tunnel --local 127.0.0.1:8080 \
-      --tunnel_type http \
-      --name rpi-service \
-      --username user \
-      --password my_password \
-      --stats-interval 2s
-
-# next time just run
-gost-tunnel
-```
-**Note:** It's tested on `Raspberry Pi Zero 2W` and macOS hosts. Use it on your own risk.
-
-3. **Watch logs** with `jq`:
-```bash
-# Linux
-tail -f /home/[user]/.config/gost.plus/logs/gost-plus.log | jq -C .
+gost-tunnel paths
 ```
 
-4. **Using Entrypoints** (connect to Remote Tunnels)
-   
-   **On Machine A (with the service):**
-   ```bash
-   # Create a TCP tunnel to expose local SSH server (port 22)
-   gost-tunnel --local 127.0.0.1:22 \
-         --tunnel_type tcp \
-         --name "SSH Tunnel for RPI" \
-         --stats-interval 2s
-   
-   # Note the Tunnel ID from the output, e.g.: "Tunnel ID: abc123..."
-   ```
-   
-   **On Machine B (client machine):**
-   ```bash
-   # Create a TCP entrypoint that connects to the tunnel
-   gost-tunnel --entrypoint --tcp \
-         --local localhost:2222 \
-         --tunnel_id "abc123..." \
-         --name "SSH Access to RPI"
-   
-   # Now you can connect to the remote SSH server using:
-   # ssh -p 2222 user@localhost
-   ```
+Default paths are:
 
-   **For UDP services (like DNS):**
-   ```bash
-   # On Machine A (with DNS server):
-   gost-tunnel --local 127.0.0.1:53 \
-         --tunnel_type udp \
-         --name "DNS Tunnel"
-   
-   # On Machine B (client):
-   gost-tunnel --entrypoint --udp \
-         --local 127.0.0.1:553 \
-         --tunnel_id "tunnel-id-here" \
-         --ttl 120 \
-         --name "DNS Entrypoint"
-   ```
-
-5. Run it as a systemd service in the background on Linux (optional):
-```bash
-chmod +x ./install.sh
-./install.sh
-```
-
-## Command Line Arguments
-
-### Global Options:
-```
---help                   Show help information
---version                Show version information
---no-stats               Disable statistics for daemon mode
---stats-interval         Stats update interval (default: 1s)
---monitor-interval       Tunnel connection monitoring interval (default: 1m)
-```
-
-### Tunnel Management:
-```
---local <endpoint>       [REQUIRED] Local endpoint to listen on (e.g., 127.0.0.1:8080)
---tunnel_type <type>     Tunnel type: http, file, tcp, udp (default: http)
---name <name>            Name for the tunnel (optional)
---username <user>        Username for authentication (for http, file tunnel types)
---password <pass>        Password for authentication (for http, file tunnel types)
---hostname <host>        Rewritten hostname on headers (optional)
---tls                    Enable TLS (optional)
---tunnel_id <id>         Specify a custom tunnel ID (optional)
-```
-
-### Entrypoint Options:
-```
---local <endpoint>      [REQUIRED] Local endpoint to forward to (e.g., 127.0.0.1:22)
---entrypoint             Create an entrypoint instead of a tunnel
---tcp                    Use TCP protocol for entrypoint
---udp                    Use UDP protocol for entrypoint
---ttl <seconds>          Time to live for UDP entrypoint in seconds (optional)
-```
-
-### List and Delete:
-```
---list                   List all tunnels and entrypoints
---tunnels                List all tunnels
---entrypoints            List all entrypoints
---delete <id>            Delete tunnel or entrypoint by ID
-```
-
-## Examples
-
-### Basic Usage:
-```bash
-# Start all configured tunnels and entrypoints
-gost-tunnel
-
-# Show help
-gost-tunnel --help
-
-# Show version
-gost-tunnel --version
-```
-
-### Tunnel Creation:
-```bash
-# Create a simple HTTP tunnel
-gost-tunnel --local localhost:8080 --name "web-app"
-
-# Create HTTP tunnel with TLS
-gost-tunnel --local 127.0.0.1:3000 --tunnel_type http --name "secure-app" --tls
-
-# Create a TCP tunnel
-gost-tunnel --local 192.168.1.100:22 --tunnel_type tcp --name "SSH Access"
-```
-
-### Entrypoint Creation:
-```bash
-# Create a TCP entrypoint
-gost-tunnel --entrypoint --tcp --local localhost:2222 --tunnel_id "tunnel-id-here" --name "SSH Access"
-
-# Create a UDP entrypoint with TTL
-gost-tunnel --entrypoint --udp --local localhost:553 --tunnel_id "tunnel-id-here" --name "DNS Server" --ttl 120
-```
-
-### Management:
-```bash
-# List all tunnels and entrypoints
-gost-tunnel --list
-
-# List all tunnels
-gost-tunnel --tunnels
-
-# List all entrypoints
-gost-tunnel --entrypoints
-
-# Delete a tunnel or entrypoint by ID
-gost-tunnel --delete "tunnel-or-entrypoint-id"
-
-# Run in daemon mode without statistics
-gost-tunnel --no-stats
-```
-
-### Advanced Usage:
-```bash
-# Custom stats update and monitoring intervals
-gost-tunnel --local 127.0.0.1:8080 \
-      --stats-interval 2s --monitor-interval 2m \
-      --username user \
-      --password my_password \
-      --hostname "apphost_name" \
-      --name "web-app" \
-      --tls
-```
-
-### Configuration and folders
-
-**MacOS**
-- app dir: /Users/[user]/Library/Application Support/gost.plus
-- app configuration file: /Users/[user]/Library/Application Support/gost.plus/config.yml
-- app log file: /Users/[user]/Library/Application Support/gost.plus/logs/gost-plus.log
+**macOS**
+- app dir: `/Users/[user]/Library/Application Support/gost.plus`
+- app configuration file: `/Users/[user]/Library/Application Support/gost.plus/config.yml`
+- app log file: `/Users/[user]/Library/Application Support/gost.plus/logs/gost-plus.log`
 
 **Linux**
-- app dir: /home/[user]/.config/gost.plus
-- app configuration file: /home/[user]/.config/gost.plus/config.yml
-- app log file: /home/[user]/.config/gost.plus/logs/gost-plus.log
+- app dir: `/home/[user]/.config/gost.plus`
+- app configuration file: `/home/[user]/.config/gost.plus/config.yml`
+- app log file: `/home/[user]/.config/gost.plus/logs/gost-plus.log`
 
-### Log monitoring
+## 🧾 Logging
 - Keep track pretty formatted logs:
 ```bash
 tail -f "/Users/[user]/Library/Application Support/gost.plus/logs/gost-plus.log" | jq -C .
@@ -264,7 +263,7 @@ tail -f "/Users/[user]/Library/Application Support/gost.plus/logs/gost-plus.log"
 tail -f "/Users/[user]/Library/Application Support/gost.plus/logs/gost-plus.log" | jq -c .
 ```
 
-## Unit Testing
+## 🚦 Unit Testing
 
 ### Mocks generating
 ```bash

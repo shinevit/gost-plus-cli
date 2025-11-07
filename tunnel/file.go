@@ -128,7 +128,7 @@ func (s *fileTunnel) init() error {
 	if s.opts.Username != "" {
 		file.Handler.Auth = &config.AuthConfig{
 			Username: s.opts.Username,
-			Password: s.opts.Password.String(),
+			Password: s.opts.Password.Reveal(),
 		}
 	}
 

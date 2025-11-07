@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -13,24 +14,36 @@ import (
 	"github.com/go-gost/gost.plus/runner"
 	"github.com/go-gost/gost.plus/tunnel"
 	"github.com/go-gost/gost.plus/utils"
+	fp "github.com/go-gost/gost.plus/utils/fp/slice"
 )
 
 type monitorTunnelsTask struct {
 	logger       logger.Logger
 	restartTimes map[string]time.Time // Track when each tunnel was last restarted
 	restartMutex sync.RWMutex         // Protect restartTimes map
+	tunnelsID    []string             // IDs of restartable items - tunnels only
 }
 
 func NewMonitorTask() runner.Task {
 	return NewMonitorTaskWith(logger.Default().WithFields(map[string]any{
 		"kind": "monitor",
-	}))
+	}), []string{}) // for all tunnels
 }
 
-func NewMonitorTaskWith(logger logger.Logger) runner.Task {
+// create a monitoring process for specific tunnels
+func NewMonitorTaskFor(tunnelsID []string) runner.Task {
+	return NewMonitorTaskWith(
+		logger.Default().WithFields(map[string]any{
+			"kind": "monitor",
+		}),
+		tunnelsID)
+}
+
+func NewMonitorTaskWith(logger logger.Logger, tunnelsID []string) runner.Task {
 	return &monitorTunnelsTask{
 		logger:       logger,
 		restartTimes: make(map[string]time.Time),
+		tunnelsID:    tunnelsID,
 	}
 }
 
@@ -125,7 +138,7 @@ func (t *monitorTunnelsTask) shouldRestartTunnel(tunnelID string) bool {
 
 func (t *monitorTunnelsTask) Run(ctx context.Context) error {
 	log := t.logger
-	for _, tun := range tunnel.GetAll() {
+	for _, tun := range t.getObservableTunnels() {
 		if tun == nil {
 			continue
 		}
@@ -158,6 +171,16 @@ func (t *monitorTunnelsTask) Run(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// get all tunnels or specific
+func (t *monitorTunnelsTask) getObservableTunnels() []tunnel.Tunnel {
+	if len(t.tunnelsID) > 0 {
+		return fp.Filter(tunnel.GetAll(), func(tun tunnel.Tunnel) bool {
+			return slices.Contains(t.tunnelsID, tun.ID())
+		})
+	}
+	return tunnel.GetAll()
 }
 
 func restartTunnel(tun tunnel.Tunnel, log logger.Logger) error {

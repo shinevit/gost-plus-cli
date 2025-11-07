@@ -67,3 +67,11 @@ func Fold[T, R any](opt Option[T], ifEmpty R, f func(T) R) R {
 	}
 	return f(*opt.value)
 }
+
+// Cond returns Some(v) if the condition is true, otherwise None.
+func Cond[T any](condition bool, value T) Option[T] {
+	if condition {
+		return Some(&value)
+	}
+	return None[T]()
+}

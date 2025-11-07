@@ -1,0 +1,44 @@
+@startuml
+title TCP Tunnel & Entrypoint Workflow
+
+start
+
+partition "Part 1: Create TCP Tunnel on Host A" {
+  :User Action: Create Tunnel;
+  :Command: `gost-tunnel tcp 192.168.0.21:22 -n "SSH Access"`;
+
+  partition "CLI Action" {
+    :Connects to GOST+ Service;
+    :Registers Tunnel;
+    :Receives Unique Tunnel ID;
+  }
+  :User obtains **Tunnel ID**;
+}
+
+partition "Part 2: Bind the tunnel to a local TCP Entrypoint on Host B" {
+  :User Action: Create new Entrypoint;
+  :Command: `gost-tunnel bind <tunnel-ID> -tcp 127.0.0.1:2222 -n "SSH Access"`;
+  :User Action: Or start existing Entrypoint;
+  :Command: `gost-tunnel start -n "SSH Access"`;
+
+  partition "CLI Action" {
+    :Starts local TCP server on `:2222`;
+    :Links to the remote tunnel;
+  }
+  :Result: Local port `:2222` is ready for connections;
+}
+
+partition "Part 3: Access to the tunneled TCP service on Host B" {
+  :User connects to the local entrypoint\n(Example: `ssh user@127.0.0.1 -p 2222`);
+
+  partition "Traffic Flow" {
+    :Local Client;
+    :Local Entrypoint :2222;
+    :GOST+ Network via Tunnel;
+    :Remote Service :22;
+  }
+  :Outcome: Secure connection is established;
+}
+
+end
+@enduml

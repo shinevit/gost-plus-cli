@@ -130,7 +130,7 @@ func TestPassword_Operations(t *testing.T) {
 			// Test String() method
 			// For valid base64, it should decode to the original string
 			// For invalid base64, it should return the original string
-			assert.Equal(t, tc.expectString, password.String(),
+			assert.Equal(t, tc.expectString, password.Reveal(),
 				"String() should return the expected value")
 
 			// Test IsEmpty() method
@@ -148,13 +148,13 @@ func TestPassword_Operations(t *testing.T) {
 			}
 
 			// Verify String() after Set()
-			assert.Equal(t, tc.setPassword, setPassword.String(),
+			assert.Equal(t, tc.setPassword, setPassword.Reveal(),
 				"String() after Set() should return the original password")
 
 			// Additional test for valid base64 handling
 			if tc.expectValidBase64 {
 				encoded := encodePasswordForTest(tc.expectString)
-				assert.Equal(t, tc.expectString, config.Password(encoded).String(),
+				assert.Equal(t, tc.expectString, config.Password(encoded).Reveal(),
 					"Should correctly decode valid base64 password")
 			}
 		})

@@ -16,7 +16,7 @@ import (
 	xgoMock "github.com/xhd2015/xgo/runtime/mock"
 )
 
-func TestMonitorTunnelsTask_Run_ActiveHttpOrFileTunnel(t *testing.T) {
+func TestMonitorTunnelsTask_Run_HttpOrFileTunnel(t *testing.T) {
 	tests := []struct {
 		name           string
 		tunnelType     string
@@ -88,7 +88,7 @@ func TestMonitorTunnelsTask_Run_ActiveHttpOrFileTunnel(t *testing.T) {
 			})
 
 			// Act
-			monitorTask := task.NewMonitorTaskWith(mockLogger)
+			monitorTask := task.NewMonitorTaskWith(mockLogger, []string{})
 			err := monitorTask.Run(context.Background())
 
 			// Assert
@@ -181,7 +181,7 @@ func TestMonitorTunnelsTask_Run_Should_Restart_FailedHTTPLikeTunnel(t *testing.T
 			xgoMock.Patch(tunnel.Set, func(tunnel.Tunnel) {})
 
 			// Act
-			monitorTask := task.NewMonitorTaskWith(mockLogger)
+			monitorTask := task.NewMonitorTaskWith(mockLogger, []string{})
 			err := monitorTask.Run(context.Background())
 
 			// Assert
@@ -213,7 +213,7 @@ func TestMonitorTunnelsTask_Run_Should_Skip_Any_Closed_Tunnel(t *testing.T) {
 	})
 
 	// Act
-	monitorTask := task.NewMonitorTaskWith(mockLogger)
+	monitorTask := task.NewMonitorTaskWith(mockLogger, []string{})
 	err := monitorTask.Run(context.Background())
 
 	// Assert
@@ -257,7 +257,7 @@ func TestMonitorTunnelsTask_Run_Should_Restart_InactiveTCPTunnel(t *testing.T) {
 	xgoMock.Patch(tunnel.Set, func(tunnel.Tunnel) {})
 
 	// Act
-	monitorTask := task.NewMonitorTaskWith(mockLogger)
+	monitorTask := task.NewMonitorTaskWith(mockLogger, []string{})
 	err := monitorTask.Run(context.Background())
 
 	// Assert
@@ -305,7 +305,7 @@ func TestMonitorTunnelsTask_Run_Should_Not_Be_Restared_ActiveTCPTunnel(t *testin
 	xgoMock.Patch(tunnel.Set, func(tunnel.Tunnel) {})
 
 	// Act
-	monitorTask := task.NewMonitorTaskWith(mockLogger)
+	monitorTask := task.NewMonitorTaskWith(mockLogger, []string{})
 	err := monitorTask.Run(context.Background())
 
 	// Assert
@@ -313,4 +313,71 @@ func TestMonitorTunnelsTask_Run_Should_Not_Be_Restared_ActiveTCPTunnel(t *testin
 	mockLogger.AssertExpectations(t)
 	mockLogger.AssertCalled(t, "Infof", "%s Tunnel '%s' is active (service %v)", []any{"TCP", expectedTunnelName, expectedState})
 	mockTunnel.AssertExpectations(t)
+}
+
+func TestMonitorTunnelsTask_Run_OnlyMonitoredTunnelIsProcessed(t *testing.T) {
+	// Arrange
+	var setTunnelID string
+
+	mockLogger := mocks.NewMockLogger(t)
+	mockLogger.On("WithFields", mock.Anything).Return(mockLogger).Maybe()
+	mockLogger.On("Infof", mock.Anything, mock.Anything).Return()
+	mockLogger.On("Warnf", mock.Anything, mock.Anything, mock.Anything).Return()
+
+	expectedHttpStatus := http.StatusBadGateway
+	mockServer := mocks.MockHTTPServer(expectedHttpStatus)
+	defer mockServer.Close()
+
+	// monitored tunnel (should be processed)
+	monitoredTunnelID := "monitored-tunnel"
+	monitoredTunnelName := "Monitored HTTP Tunnel"
+	monitoredTunnel := tunnel.NewMockTunnel(t)
+	monitoredTunnel.On("ID").Return(monitoredTunnelID)
+	monitoredTunnel.On("Type").Return(tunnel.HTTPTunnel)
+	monitoredTunnel.On("Name").Return(monitoredTunnelName)
+	monitoredTunnel.On("IsClosed").Return(false)
+	monitoredTunnel.On("Entrypoint").Return(mockServer.URL)
+	// expectations the tunnel was really called
+	monitoredTunnel.On("Options").Return(tunnel.Options{}).Once()
+	monitoredTunnel.On("Run").Return(nil).Once()
+	monitoredTunnel.On("Close").Return(nil).Once()
+
+	// unmonitored tunnel (should be ignored)
+	unmonitoredTunnelID := "unmonitored-tunnel"
+	unmonitoredTunnel := tunnel.NewMockTunnel(t)
+	unmonitoredTunnel.On("ID").Return(unmonitoredTunnelID)
+
+	xgoMock.Patch(tunnel.GetAll, func() []tunnel.Tunnel {
+		return []tunnel.Tunnel{monitoredTunnel, unmonitoredTunnel}
+	})
+	xgoMock.Patch(tunnel.CreateTunnel, func(tunnelType string, opts tunnel.Options) tunnel.Tunnel {
+		return monitoredTunnel
+	})
+	xgoMock.Patch(tunnel.Set, func(tun tunnel.Tunnel) {
+		// track which tunnel was set
+		setTunnelID = tun.ID()
+	})
+
+	// Act
+	monitorTask := task.NewMonitorTaskWith(mockLogger, []string{monitoredTunnelID})
+	err := monitorTask.Run(context.Background())
+
+	// Assert
+	assert.NoError(t, err, "Monitor task should run without error")
+
+	// verify the correct tunnel was set eventually
+	assert.Equal(t, monitoredTunnelID, setTunnelID, "Expected monitored tunnel to be set")
+
+	// verify unmonitored tunnel methods were not called (except ID which is used for filtering)
+	unmonitoredTunnel.AssertExpectations(t)
+	unmonitoredTunnel.AssertNotCalled(t, "Type")
+	unmonitoredTunnel.AssertNotCalled(t, "Name")
+	unmonitoredTunnel.AssertNotCalled(t, "IsClosed")
+	unmonitoredTunnel.AssertNotCalled(t, "Entrypoint")
+	unmonitoredTunnel.AssertNotCalled(t, "Options")
+	unmonitoredTunnel.AssertNotCalled(t, "Run")
+	unmonitoredTunnel.AssertNotCalled(t, "Close")
+	// verify only ID() was called Once
+	unmonitoredTunnel.AssertCalled(t, "ID")
+	assert.Equal(t, 1, len(unmonitoredTunnel.Calls), "Expected only ID() to be called on unmonitored tunnel")
 }

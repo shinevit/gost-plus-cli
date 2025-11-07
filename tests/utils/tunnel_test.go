@@ -37,14 +37,14 @@ func TestGetDisplayState(t *testing.T) {
 			validate: validateExactDisplayState("CLOSED"),
 		},
 		{
-			name: "WhenNotClosedAndNoStatus_ReturnsUppercaseFailed",
+			name: "WhenNotClosedAndNoStatus_ReturnsUppercaseReady",
 			setupMocks: func(mt *tunnel.MockTunnel) *xservice.Status {
 				mt.On("IsClosed").Return(false).Once()
 				status := (*xservice.Status)(nil)
 				mt.On("Status").Return(status).Once()
 				return status
 			},
-			validate: validateExactDisplayState("FAILED"),
+			validate: validateExactDisplayState("READY"),
 		},
 		{
 			name: "WhenNotClosedAndHasStatus_ReturnsUppercaseStatusState",
@@ -66,7 +66,8 @@ func TestGetDisplayState(t *testing.T) {
 			mockTunnel := tunnel.NewMockTunnel(t)
 
 			// Setup common mocks
-			mockTunnel.On("ID").Return(uuid.New()).Maybe()
+			tunnelID := uuid.New().String()
+			mockTunnel.On("ID").Return(tunnelID).Maybe()
 			mockTunnel.On("Name").Return("mock-tunnel").Maybe()
 			mockTunnel.On("Type").Return(tunnel.HTTPTunnel).Maybe()
 			mockTunnel.On("Close").Return(nil).Maybe()
@@ -111,14 +112,14 @@ func TestGetState(t *testing.T) {
 			validate: validateExactState(service.StateClosed),
 		},
 		{
-			name: "WhenNotClosedAndNilStatus_ReturnsFailedState",
+			name: "WhenNotClosedAndNilStatus_ReturnsReadyState",
 			setupMocks: func(mt *tunnel.MockTunnel) *xservice.Status {
 				mt.On("IsClosed").Return(false).Once()
 				status := (*xservice.Status)(nil)
 				mt.On("Status").Return(status).Once()
 				return status
 			},
-			validate: validateExactState(service.StateFailed),
+			validate: validateExactState(service.StateReady),
 		},
 		{
 			name: "WhenNotClosedAndHasEmptyStatus_ReturnsStatusState",
@@ -137,7 +138,8 @@ func TestGetState(t *testing.T) {
 			mockTunnel := tunnel.NewMockTunnel(t)
 
 			// Setup common mocks
-			mockTunnel.On("ID").Return(uuid.New()).Maybe()
+			tunnelID := uuid.New().String()
+			mockTunnel.On("ID").Return(tunnelID).Maybe()
 			mockTunnel.On("Name").Return("mock-tunnel").Maybe()
 			mockTunnel.On("Type").Return(tunnel.HTTPTunnel).Maybe()
 			mockTunnel.On("Close").Return(nil).Maybe()

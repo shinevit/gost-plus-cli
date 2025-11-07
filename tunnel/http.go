@@ -117,7 +117,7 @@ func (s *httpTunnel) init() error {
 	if s.opts.Username != "" {
 		node.HTTP.Auth = &config.AuthConfig{
 			Username: s.opts.Username,
-			Password: s.opts.Password.String(),
+			Password: s.opts.Password.Reveal(),
 		}
 	}
 	if s.opts.Hostname != "" {

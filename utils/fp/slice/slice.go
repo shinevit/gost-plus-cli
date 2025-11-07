@@ -1,7 +1,10 @@
 package slice
 
 import (
+	"slices"
+
 	"github.com/go-gost/gost.plus/utils/fp"
+	opt "github.com/go-gost/gost.plus/utils/fp/option"
 )
 
 func Map[T any, R any](input []T, fn fp.Functor[T, R]) []R {
@@ -66,4 +69,38 @@ func Sum[T any, R fp.Numeric](input []T, selector fp.NumericSelector[T, R]) R {
 		sum += selector(item)
 	}
 	return sum
+}
+
+func Any[T any](input []T) bool {
+	for idx, _ := range input {
+		return idx >= 0
+	}
+	return false
+}
+
+func Exists[T any](input []T, predicate fp.Predicate[T]) bool {
+	return slices.ContainsFunc(input, predicate)
+}
+
+func First[T any](input []T, predicate fp.Predicate[T]) opt.Option[T] {
+	for _, it := range input {
+		if predicate(it) {
+			item := it
+			return opt.Some(&item)
+		}
+	}
+	return opt.None[T]()
+}
+
+func ForEach[T any](input []T, fn func(T)) {
+	if fn == nil {
+		return
+	}
+	for _, item := range input {
+		fn(item)
+	}
+}
+
+func ForAll[T any](input []T, predicate fp.Predicate[T]) bool {
+	return uint64(len(input)) == Count(input, predicate)
 }

@@ -1,0 +1,22 @@
+@startuml
+title Managing Entrypoints
+
+actor "User" as user
+actor "Remote Tunnel" as remote_tunnel <<HOST>>
+
+rectangle "GOST+ CLI" {
+  usecase "Create/Start Entrypoint" as UC5
+  usecase "List Entrypoints" as UC6
+  usecase "Delete Entrypoint" as UC7
+  usecase "Specify Local Port" as UC5_1
+  usecase "Specify Protocol\n(TCP/UDP)" as UC5_2
+}
+
+user -- UC5
+user -- UC6
+user -- UC7
+
+UC5 ..> UC5_1 : <<include>>
+UC5 ..> UC5_2 : <<include>>
+UC5 -- remote_tunnel : Link to Existing Tunnel by ID
+@enduml

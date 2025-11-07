@@ -1,8 +1,10 @@
 package slice
 
 import (
+	"fmt"
 	"testing"
 
+	opt "github.com/go-gost/gost.plus/utils/fp/option"
 	fp "github.com/go-gost/gost.plus/utils/fp/slice"
 	"github.com/stretchr/testify/assert"
 )
@@ -582,6 +584,167 @@ func TestSum_WithFloat64_ReturnsCorrectSum(t *testing.T) {
 	}
 }
 
+func TestMap_WithIntToString_ReturnsMappedStrings(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []int
+		expected []string
+	}{
+		{
+			name:     "Empty slice",
+			input:    []int{},
+			expected: []string{},
+		},
+		{
+			name:     "Single element",
+			input:    []int{42},
+			expected: []string{"42"},
+		},
+		{
+			name:     "Multiple elements",
+			input:    []int{1, 2, 3, 4, 5},
+			expected: []string{"1", "2", "3", "4", "5"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := fp.Map(tc.input, func(i int) string {
+				return fmt.Sprint(i)
+			})
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestMap_WithStructTransformation_ReturnsMappedValues(t *testing.T) {
+	type person struct {
+		name string
+		age  int
+	}
+
+	tests := []struct {
+		name     string
+		input    []person
+		expected []string
+	}{
+		{
+			name:     "Empty slice",
+			input:    []person{},
+			expected: []string{},
+		},
+		{
+			name: "Single element",
+			input: []person{
+				{name: "Alice", age: 30},
+			},
+			expected: []string{"Alice:30"},
+		},
+		{
+			name: "Multiple elements",
+			input: []person{
+				{name: "Alice", age: 30},
+				{name: "Bob", age: 25},
+			},
+			expected: []string{"Alice:30", "Bob:25"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := fp.Map(tc.input, func(p person) string {
+				return fmt.Sprintf("%s:%d", p.name, p.age)
+			})
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestAny_WithDifferentInputs_ReturnsCorrectBool(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []int
+		expected bool
+	}{
+		{
+			name:     "Nil slice",
+			input:    nil,
+			expected: false,
+		},
+		{
+			name:     "Empty slice",
+			input:    []int{},
+			expected: false,
+		},
+		{
+			name:     "Single element",
+			input:    []int{42},
+			expected: true,
+		},
+		{
+			name:     "Multiple elements",
+			input:    []int{1, 2, 3},
+			expected: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := fp.Any(tc.input)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestExists_WithDifferentInputs_ReturnsCorrectBool(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []int
+		value    int
+		expected bool
+	}{
+		{
+			name:     "Empty slice",
+			input:    []int{},
+			value:    42,
+			expected: false,
+		},
+		{
+			name:     "Element exists",
+			input:    []int{1, 2, 3, 4, 5},
+			value:    3,
+			expected: true,
+		},
+		{
+			name:     "Element doesn't exist",
+			input:    []int{1, 2, 3, 4, 5},
+			value:    42,
+			expected: false,
+		},
+		{
+			name:     "First element",
+			input:    []int{1, 2, 3, 4, 5},
+			value:    1,
+			expected: true,
+		},
+		{
+			name:     "Last element",
+			input:    []int{1, 2, 3, 4, 5},
+			value:    5,
+			expected: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := fp.Exists(tc.input, func(x int) bool {
+				return x == tc.value
+			})
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
 func TestSum_WithOtherNumericTypes_ReturnsCorrectSums(t *testing.T) {
 	t.Run("uint", func(t *testing.T) {
 		input := []uint{1, 2, 3, 4, 5}
@@ -606,4 +769,211 @@ func TestSum_WithOtherNumericTypes_ReturnsCorrectSums(t *testing.T) {
 		result := fp.Sum(input, fn)
 		assert.InDelta(t, expected, result, 0.0001)
 	})
+}
+
+func TestFirst_WithInts_ReturnsFirstMatchingElement(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []int
+		pred     func(int) bool
+		expected int
+		found    bool
+	}{
+		{
+			name:  "find first even number",
+			input: []int{1, 3, 4, 6, 7},
+			pred: func(n int) bool {
+				return n%2 == 0
+			},
+			expected: 4,
+			found:    true,
+		},
+		{
+			name:  "no match found",
+			input: []int{1, 3, 5, 7, 9},
+			pred: func(n int) bool {
+				return n%2 == 0
+			},
+			expected: 0,
+			found:    false,
+		},
+		{
+			name:  "empty input",
+			input: []int{},
+			pred: func(n int) bool {
+				return true
+			},
+			expected: 0,
+			found:    false,
+		},
+		{
+			name:  "first element matches",
+			input: []int{2, 4, 6, 8},
+			pred: func(n int) bool {
+				return n%2 == 0
+			},
+			expected: 2,
+			found:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := fp.First(tt.input, tt.pred)
+			actual := opt.Fold(result, 0, func(v int) int { return v })
+			expected := tt.expected
+			if !tt.found {
+				expected = 0
+			}
+			assert.Equal(t, expected, actual, "Unexpected value from First")
+		})
+	}
+}
+
+func TestFirst_WithStrings_ReturnsFirstMatchingElement(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []string
+		pred     func(string) bool
+		expected string
+		found    bool
+	}{
+		{
+			name:  "find first string with length > 3",
+			input: []string{"a", "bb", "ccc", "dddd", "eeeee"},
+			pred: func(s string) bool {
+				return len(s) > 3
+			},
+			expected: "dddd",
+			found:    true,
+		},
+		{
+			name:  "no match found in strings",
+			input: []string{"a", "b", "c"},
+			pred: func(s string) bool {
+				return len(s) > 5
+			},
+			expected: "",
+			found:    false,
+		},
+		{
+			name:  "first element matches in strings",
+			input: []string{"apple", "banana", "cherry"},
+			pred: func(s string) bool {
+				return len(s) > 0
+			},
+			expected: "apple",
+			found:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := fp.First(tt.input, tt.pred)
+			actual := opt.Fold(result, "", func(v string) string { return v })
+			expected := tt.expected
+			if !tt.found {
+				expected = ""
+			}
+			assert.Equal(t, expected, actual, "Unexpected value from First")
+		})
+	}
+}
+
+func TestForAll_WithInts_ReturnsCorrectResult(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []int
+		fn       func(int) bool
+		expected bool
+	}{
+		{
+			name:  "all even numbers",
+			input: []int{2, 4, 6, 8, 10},
+			fn: func(n int) bool {
+				return n%2 == 0
+			},
+			expected: true,
+		},
+		{
+			name:  "not all even numbers",
+			input: []int{2, 4, 5, 8, 10},
+			fn: func(n int) bool {
+				return n%2 == 0
+			},
+			expected: false,
+		},
+		{
+			name:  "empty slice",
+			input: []int{},
+			fn: func(n int) bool {
+				return false
+			},
+			expected: true, // Vacuous truth - all elements (none) satisfy the condition
+		},
+		{
+			name:  "nil slice",
+			input: nil,
+			fn: func(n int) bool {
+				return false
+			},
+			expected: true, // Vacuous truth - all elements (none) satisfy the condition
+		},
+		{
+			name:  "all elements satisfy complex condition",
+			input: []int{10, 20, 30, 40, 50},
+			fn: func(n int) bool {
+				return n > 0 && n < 100 && n%10 == 0
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := fp.ForAll(tt.input, tt.fn)
+			assert.Equal(t, tt.expected, result, "ForAll returned unexpected result for test case: %s", tt.name)
+		})
+	}
+}
+
+func TestForAll_WithStrings_ReturnsCorrectResult(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []string
+		fn       func(string) bool
+		expected bool
+	}{
+		{
+			name:  "all strings with length > 2",
+			input: []string{"abc", "def", "ghi"},
+			fn: func(s string) bool {
+				return len(s) > 2
+			},
+			expected: true,
+		},
+		{
+			name:  "not all strings with length > 2",
+			input: []string{"a", "bb", "ccc"},
+			fn: func(s string) bool {
+				return len(s) > 2
+			},
+			expected: false,
+		},
+		{
+			name:  "empty string slice",
+			input: []string{},
+			fn: func(s string) bool {
+				return false
+			},
+			expected: true, // Vacuous truth
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := fp.ForAll(tt.input, tt.fn)
+			assert.Equal(t, tt.expected, result, "ForAll returned unexpected result for test case: %s", tt.name)
+		})
+	}
 }

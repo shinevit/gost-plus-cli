@@ -2,10 +2,14 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -19,293 +23,812 @@ import (
 	"github.com/go-gost/gost.plus/tunnel/entitymanager"
 	"github.com/go-gost/gost.plus/tunnel/entrypoint"
 	"github.com/go-gost/gost.plus/utils"
+	args "github.com/go-gost/gost.plus/utils/cli"
+	"github.com/go-gost/gost.plus/utils/fp/lazy"
+	opt "github.com/go-gost/gost.plus/utils/fp/option"
+	"github.com/go-gost/gost.plus/utils/fp/slice"
 	"github.com/go-gost/gost.plus/version"
 	_ "github.com/go-gost/gost.plus/winres"
+	"github.com/google/uuid"
+	"github.com/urfave/cli/v2"
+	"gopkg.in/yaml.v3"
 )
 
-// Command line flags
-type CommandFlags struct {
-	LocalEndpoint   string
-	TunnelType      string
-	ServiceName     string
-	Username        string
-	Password        string
-	Hostname        string
-	EnableTLS       bool
-	ShowVersion     bool
-	StatsInterval   time.Duration
-	MonitorInterval time.Duration
-	DeleteTunnelID  string
-	TunnelID        string
-	IsEntrypoint    bool
-	TCPFlag         bool
-	UDPFlag         bool
-	TTLSec          int
-	ListAll         bool
-	ListTunnels     bool
-	ListEntryPoints bool
-	ShowHelp        bool
-	NoStats         bool
-}
+type Nothing struct{}
+
+var (
+	_lazyInit = lazy.NewLazy(func() Nothing {
+		// This initialization block is called once
+		config.Init()
+		tunnel.LoadFromConfig()
+		entrypoint.LoadFromConfig()
+		return Nothing{}
+	})
+
+	initOnce = func() {
+		_lazyInit.Get()
+	}
+)
+
+// Global flags values
+var (
+	statsInterval   time.Duration
+	monitorInterval time.Duration
+	statsDisabled   bool
+)
+
+const (
+	DefaultStatsInterval   = time.Second
+	DefaultMonitorInterval = time.Minute
+)
 
 func main() {
-	// Parse command line arguments
-	flags := parseFlags()
+	app := &cli.App{
+		Name:    appName(),
+		Version: version.Version,
+		Description: "The GOST+ CLI tool helps tunnel local and internal services over the internet,\n" +
+			"inspects traffic, and automatically recovers connectivity.",
+		Usage:          "secure tunneling tool for sharing local services over the internet",
+		UsageText:      getMainUsageText(),
+		DefaultCommand: "start",
+		CommandNotFound: func(c *cli.Context, command string) {
+			// Check if the command is a valid command (starts with a letter, followed by word characters)
+			isCommand := regexp.MustCompile(`^[a-zA-Z]\w*$`).MatchString(command)
+			if !isCommand {
+				// it's not a valid command (could be a redirection, pipe, etc.)
+				return
+			}
 
-	// Process command line flags
-	if flags.ShowHelp {
-		printUsage()
-		os.Exit(0)
-	}
-
-	if flags.ShowVersion {
-		fmt.Print(GetVersion())
-		os.Exit(0)
-	}
-
-	// Initializes the configuration and loads tunnels
-	config.Init()
-	tunnel.InitFromConfig()
-	entrypoint.InitFromConfig()
-	fmt.Println("\nStarting tunnels from configuration...")
-	fmt.Println("Starting entrypoints from configuration...")
-
-	// Handle tunnel management commands
-	if flags.DeleteTunnelID != "" {
-		err1 := deleteTunnel(flags.DeleteTunnelID)
-		err2 := deleteEntryPoint(flags.DeleteTunnelID)
-		if err1 != nil && err2 != nil {
+			fmt.Fprintf(c.App.ErrWriter, "Unknown command %q\n\n", command)
+			cli.ShowAppHelp(c)
+			fmt.Fprintf(c.App.ErrWriter, "\nUnknown command %q\n", command)
 			os.Exit(1)
-		}
-		os.Exit(0)
+		},
+		Flags: []cli.Flag{
+			getStatsIntervalFlag(),
+			getMonitorIntervalFlag(),
+			getDisableStatsFlag(),
+		},
+		Before: func(c *cli.Context) error {
+			initOnce() // it's called before each command
+			parser := args.NewCLIArgsParser()
+			err := parser.ParseArgs(c.Args())
+			if err == nil {
+				parser.DurationVar(&statsInterval, c.Duration("stats"), "stats", "stats-interval")
+				parser.DurationVar(&monitorInterval, c.Duration("monitor"), "monitor", "monitor-interval")
+				parser.BoolVar(&statsDisabled, c.Bool("no-stats"), "no-stats")
+			}
+			return nil
+		},
+		Commands: []*cli.Command{
+			{
+				Name:      "http",
+				Usage:     "Create HTTP tunnel",
+				UsageText: getHttpTunnelUsageText(),
+				Flags:     getHttpTunnelCommandFlags(),
+				Action:    createTunnelAction("http"),
+			},
+			{
+				Name:        "tls",
+				Usage:       "Create HTTPS-based secured tunnel",
+				UsageText:   getTLSTunnelUsageText(),
+				Description: `Export https local services to public access`,
+				Flags:       getHttpTunnelCommandFlags(),
+				Action:      createTunnelAction("tls"),
+			},
+			{
+				Name:      "file",
+				Usage:     "Create File sharing tunnel",
+				UsageText: getFileTunnelUsageText(),
+				Flags:     getFileTunnelCommandFlags(),
+				Action:    createTunnelAction("file"),
+			},
+			{
+				Name:      "tcp",
+				Usage:     "Create TCP tunnel",
+				UsageText: getTCPTunnelUsageText(),
+				Flags: slices.Concat(getTunnelNameCommandFlags(),
+					[]cli.Flag{
+						getStatsIntervalFlag(),
+						getMonitorIntervalFlag(),
+						getDisableStatsFlag(),
+					}),
+				Action: createTunnelAction("tcp"),
+			},
+			{
+				Name:      "udp",
+				Usage:     "Create UDP tunnel",
+				UsageText: getUDPTunnelUsageText(),
+				Flags: slices.Concat(getTunnelNameCommandFlags(),
+					[]cli.Flag{
+						getStatsIntervalFlag(),
+						getMonitorIntervalFlag(),
+						getDisableStatsFlag(),
+					}),
+				Action: createTunnelAction("udp"),
+			},
+			{
+				Name:      "bind",
+				Usage:     "Binds a tunnel to a local TCP or UDP port, creates an entrypoint",
+				UsageText: getEntrypointsUsageText(),
+				Flags:     getEntrypointsCommandFlags(),
+				Action:    createEntrypointAction(),
+			},
+			{
+				Name:      "start",
+				Usage:     "Start an existing tunnel and/or entrypoint from the config",
+				UsageText: getStartCommandUsageText(),
+				Flags: slices.Concat(getTunnelNameCommandFlags(),
+					[]cli.Flag{
+						getStatsIntervalFlag(),
+						getMonitorIntervalFlag(),
+						getDisableStatsFlag(),
+					}),
+				Action: handleStartAction(),
+			},
+			{
+				Name:      "list",
+				Aliases:   []string{"ls"},
+				Usage:     "List all tunnels and entrypoints",
+				UsageText: fmt.Sprintf("%s list\n", appName()) + fmt.Sprintf("%s l\n", appName()) + fmt.Sprintf("%s l -h", appName()),
+				Action: func(c *cli.Context) error {
+					listAllTunnels()
+					listAllEntryPoints()
+					return nil
+				},
+			},
+			{
+				Name:      "tunnels",
+				Aliases:   []string{"tl"},
+				Usage:     "List tunnels",
+				UsageText: fmt.Sprintf("%s tunnels\n", appName()) + fmt.Sprintf("%s tl\n", appName()) + fmt.Sprintf("%s tl -h", appName()),
+				Action: func(c *cli.Context) error {
+					listAllTunnels()
+					return nil
+				},
+			},
+			{
+				Name:      "entrypoints",
+				Aliases:   []string{"el"},
+				Usage:     "List entrypoints",
+				UsageText: fmt.Sprintf("%s entrypoints\n", appName()) + fmt.Sprintf("%s el\n", appName()) + fmt.Sprintf("%s el -h", appName()),
+				Action: func(c *cli.Context) error {
+					listAllEntryPoints()
+					return nil
+				},
+			},
+			{
+				Name:      "delete",
+				Aliases:   []string{"d"},
+				Usage:     "Delete a tunnel or entrypoint by ID",
+				UsageText: fmt.Sprintf("%s delete <ID>\n", appName()) + fmt.Sprintf("%s d <ID>\n", appName()) + fmt.Sprintf("%s d -h", appName()),
+				Action: func(c *cli.Context) error {
+					if c.NArg() == 0 {
+						return cli.Exit("Error: missing ID for delete command", 1)
+					}
+					id := c.Args().First()
+					err1 := deleteTunnel(id)
+					err2 := deleteEntryPoint(id)
+					if err1 != nil && err2 != nil {
+						return cli.Exit(fmt.Sprintf("Error: No tunnel or entrypoint found with ID: %s", id), 1)
+					}
+					return nil
+				},
+			},
+			{
+				Name:      "showConfig",
+				Aliases:   []string{"sc"},
+				Usage:     "Show the application configuration safely",
+				UsageText: fmt.Sprintf("%s showConfig\n", appName()) + fmt.Sprintf("%s sc\n", appName()) + fmt.Sprintf("%s sc -h", appName()),
+				Action:    showConfigSafeAction(),
+			},
+			{
+				Name:      "env",
+				Usage:     "Show app environment variables",
+				UsageText: fmt.Sprintf("%s env\n", appName()) + fmt.Sprintf("%s env -h", appName()),
+				Action: func(c *cli.Context) error {
+					fmt.Println("\nEnvironment variables:")
+					fmt.Println("   GOST_CONFIG_DIR", "   sets root app folder for config")
+					fmt.Println("   AUTH_PASSWORD  ", "   sets an authentication password for HTTP/File tunnels")
+					fmt.Println()
+					return nil
+				},
+			},
+			{
+				Name:      "paths",
+				Usage:     "Show app paths",
+				UsageText: fmt.Sprintf("%s paths\n", appName()) + fmt.Sprintf("%s paths -h", appName()),
+				Action: func(c *cli.Context) error {
+					fmt.Println("\nConfig path: ", config.ConfigFilePath())
+					fmt.Println("Log path:    ", config.LogFilePath())
+					fmt.Println()
+					return nil
+				},
+			},
+		},
 	}
 
-	if flags.ListTunnels {
-		listAllTunnels()
-		os.Exit(0)
+	if err := app.Run(os.Args); err != nil {
+		fmt.Fprintf(os.Stderr, "\nIncorrect Usage: %v\n", err)
 	}
-	if flags.ListEntryPoints {
-		listAllEntryPoints()
-		os.Exit(0)
-	}
-	if flags.ListAll {
-		listAllTunnels()
-		listAllEntryPoints()
-		os.Exit(0)
-	}
-
-	if flags.IsEntrypoint {
-		if flags.TunnelID == "" {
-			fmt.Println("--tunnel_id is required to add a new entrypoint")
-			os.Exit(1)
-		}
-		if flags.LocalEndpoint == "" {
-			fmt.Println("--local [endpoint] is required for entrypoint")
-			os.Exit(1)
-		}
-		if !flags.TCPFlag && !flags.UDPFlag {
-			fmt.Println("Type of entrypoint (--tcp, --udp) is required.")
-			os.Exit(1)
-		}
-		createEntryPoint(flags)
-
-	} else if flags.LocalEndpoint != "" && flags.TunnelType != "" {
-		createTunnel(flags)
-	}
-
-	if tunnel.Count() == 0 && entrypoint.Count() == 0 {
-		fmt.Println("No tunnels or entrypoints are configured. Go for creating any of them.")
-		printUsage()
-		os.Exit(0)
-	} else if tunnel.Count() > 0 && entrypoint.Count() == 0 {
-		listAllTunnels()
-	} else if entrypoint.Count() > 0 && tunnel.Count() == 0 {
-		listAllEntryPoints()
-	} else { // tunnel.Count() > 0 && entrypoint.Count() > 0
-		listAllTunnels()
-		listAllEntryPoints()
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Give tunnels some time to establish initial connections before starting the monitoring
-	// This prevents the monitoring task from immediately trying to restart tunnels that are still connecting
-	fmt.Printf("Starting tunnel monitoring with %v interval...\n", flags.MonitorInterval)
-	startTunnelMonitorWithDelay(ctx, flags.MonitorInterval, flags.MonitorInterval)
-
-	doneChan := make(chan struct{})
-	if !flags.NoStats {
-		// Start statistics updating and displaying
-		startStatsRunner(ctx, flags.StatsInterval)
-		if tunnel.Count() > 0 || entrypoint.Count() > 0 {
-			go stats.DisplayStats(doneChan, flags.StatsInterval)
-		}
-		fmt.Printf("\nPress Ctrl+C to exit\n\n")
-	}
-
-	waitForShutdown(doneChan)
 }
 
-// Parses command line arguments and returns a CommandFlags struct
-func parseFlags() CommandFlags {
-	flags := CommandFlags{}
+func appName() string {
+	return filepath.Base(os.Args[0])
+}
 
-	// Define command line arguments
-	flag.StringVar(&flags.LocalEndpoint, "local", "", "Local endpoint to listen on")
-	flag.StringVar(&flags.TunnelType, "tunnel_type", "http", "Tunnel type: http, file, tcp, udp")
-	flag.StringVar(&flags.ServiceName, "name", "", "Name for the tunnel (optional)")
-	flag.StringVar(&flags.Username, "username", "", "Username for authentication (optional)")
-	flag.StringVar(&flags.Password, "password", "", "Password for authentication (optional)")
-	flag.StringVar(&flags.Hostname, "hostname", "", "Rewritten hostname on headers (optional)")
-	flag.BoolVar(&flags.EnableTLS, "tls", false, "Enable TLS (optional)")
-	flag.BoolVar(&flags.ShowVersion, "version", false, "Show the version")
-	flag.DurationVar(&flags.StatsInterval, "stats-interval", time.Second, "Stats update interval")
-	flag.DurationVar(&flags.MonitorInterval, "monitor-interval", 60*time.Second, "Tunnel connection monitoring interval")
-	flag.StringVar(&flags.DeleteTunnelID, "delete", "", "Delete tunnel or entrypoint by ID")
+func getStatsIntervalFlag() cli.Flag {
+	return &cli.DurationFlag{
+		Name:    "stats-interval",
+		Aliases: []string{"stats"},
+		Value:   DefaultStatsInterval,
+		Usage:   "stats update interval",
+	}
+}
 
-	flag.BoolVar(&flags.IsEntrypoint, "entrypoint", false, "Create an entrypoint")
-	flag.StringVar(&flags.TunnelID, "tunnel_id", "", "An existing tunnel ID to connect from entrypoint")
-	flag.IntVar(&flags.TTLSec, "ttl", 0, "Time to live for UDP entrypoint in sec (optional)")
-	flag.BoolVar(&flags.TCPFlag, "tcp", false, "Indicates tcp protocol of entrypoint/tunnel")
-	flag.BoolVar(&flags.UDPFlag, "udp", false, "Indicates udp protocol of entrypoint/tunnel")
+func getMonitorIntervalFlag() cli.Flag {
+	return &cli.DurationFlag{
+		Name:    "monitor-interval",
+		Aliases: []string{"monitor"},
+		Value:   DefaultMonitorInterval,
+		Usage:   "tunnel connection monitoring interval",
+	}
+}
 
-	flag.BoolVar(&flags.ListAll, "list", false, "List all tunnels and entrypoints")
-	flag.BoolVar(&flags.ListTunnels, "tunnels", false, "List all tunnels")
-	flag.BoolVar(&flags.ListEntryPoints, "entrypoints", false, "List all entrypoints")
+func getDisableStatsFlag() cli.Flag {
+	return &cli.BoolFlag{
+		Name:  "no-stats",
+		Usage: "disable statistics for a daemon mode",
+	}
+}
 
-	flag.BoolVar(&flags.ShowHelp, "help", false, "Show help information")
-	flag.BoolVar(&flags.NoStats, "no-stats", false, "Disable statistics for a daemon mode")
+// http/tls + file tunnel
+func getAuthCommandFlags() []cli.Flag {
+	return []cli.Flag{
+		&cli.StringFlag{
+			Name:    "user",
+			Aliases: []string{"u"},
+			Usage:   "user name for authentication",
+		},
+		&cli.StringFlag{
+			Name:    "password",
+			EnvVars: []string{"AUTH_PASSWORD"},
+			Usage:   "password for authentication",
+		},
+	}
+}
 
-	// Override default usage function
-	flag.Usage = printUsage
+func getTunnelNameCommandFlags() []cli.Flag {
+	return []cli.Flag{
+		getNameCommandFlag("tunnel"),
+	}
+}
 
-	// Parse command line arguments
-	flag.Parse()
+func getNameCommandFlag(itemName string) cli.Flag {
+	return &cli.StringFlag{
+		Name:     "name",
+		Aliases:  []string{"n"},
+		Usage:    itemName + " name",
+		Required: false,
+	}
+}
+
+func getMainUsageText() string {
+	usages := []string{
+		fmt.Sprintf("%s [global options] <command> [command options]", appName()),
+		"or",
+		fmt.Sprintf("%s <command> [command options] [global options]", appName()),
+	}
+	return strings.Join(usages, "\n")
+}
+
+func getHttpTunnelUsageText() string {
+	usages := []string{
+		fmt.Sprintf("%s http [host:]port [options]\n", appName()),
+
+		fmt.Sprintf("AUTH_PASSWORD=secret %s http 80 -n \"Name\" -u test_user -hostname iot-host", appName()),
+		fmt.Sprintf("%s http localhost:80 -n \"Name\"", appName()),
+		fmt.Sprintf("%s http 192.168.0.100:80 -n \"Name\"", appName()),
+	}
+	return strings.Join(usages, "\n")
+}
+
+func getHttpTunnelCommandFlags() []cli.Flag {
+	flags := []cli.Flag{
+		getNameCommandFlag("tunnel"),
+	}
+
+	flags = slices.Concat(flags, getAuthCommandFlags())
+
+	flags = append(flags, &cli.StringFlag{
+		Name:  "hostname",
+		Usage: "rewritten hostname on headers",
+	})
+
+	flags = append(flags, getStatsIntervalFlag())
+	flags = append(flags, getMonitorIntervalFlag())
+	flags = append(flags, getDisableStatsFlag())
 
 	return flags
 }
 
-// Get the App name
-func appName() string {
-	return strings.TrimPrefix(os.Args[0], "./")
+func getFileTunnelCommandFlags() []cli.Flag {
+	flags := slices.Concat(getTunnelNameCommandFlags(), getAuthCommandFlags())
+
+	flags = append(flags, getStatsIntervalFlag())
+	flags = append(flags, getMonitorIntervalFlag())
+	flags = append(flags, getDisableStatsFlag())
+
+	return flags
 }
 
-// printUsage prints the usage information for the CLI application
-func printUsage() {
-	fmt.Fprintf(os.Stderr, "%s\n", GetVersion())
-	fmt.Fprintf(os.Stderr, "A secure tunneling solution for exposing local services to the internet\n\n")
+func getTLSTunnelUsageText() string {
+	usages := []string{
+		fmt.Sprintf("%s tls [host:]port [options]\n", appName()),
 
-	// Global options
-	fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", appName())
-
-	// Tunnel types
-	fmt.Fprintf(os.Stderr, "Tunnel Types (--tunnel_type):\n")
-	fmt.Fprintf(os.Stderr, "  http\tHTTP/HTTPS tunnel (default)\n")
-	fmt.Fprintf(os.Stderr, "  file\tFile sharing tunnel\n")
-	fmt.Fprintf(os.Stderr, "  tcp\tTCP port forwarding\n")
-	fmt.Fprintf(os.Stderr, "  udp\tUDP port forwarding\n\n")
-
-	// TCP/UDP Tunnel options
-	fmt.Fprintf(os.Stderr, "TCP/UDP Tunnel Options (--tunnel_type tcp/udp):\n")
-	fmt.Fprintf(os.Stderr, "  --local <endpoint>\t[REQUIRED] Local endpoint to forward (e.g., 127.0.0.1:22)\n")
-	fmt.Fprintf(os.Stderr, "  --name <name>\t\tName for the tunnel (optional)\n")
-
-	// HTTP Tunnel options
-	fmt.Fprintf(os.Stderr, "HTTP Tunnel Options (--tunnel_type http):\n")
-	fmt.Fprintf(os.Stderr, "  --local <endpoint>\t[REQUIRED] Local HTTP server to forward (e.g., 127.0.0.1:8080)\n")
-	fmt.Fprintf(os.Stderr, "  --name <name>\t\tName for the tunnel (optional)\n")
-	fmt.Fprintf(os.Stderr, "  --username <user>\tUsername for authentication (optional)\n")
-	fmt.Fprintf(os.Stderr, "  --password <pass>\tPassword for authentication (optional)\n")
-	fmt.Fprintf(os.Stderr, "  --hostname <host>\tRewritten hostname on headers (optional)\n")
-	fmt.Fprintf(os.Stderr, "  --tls\t\t\tEnable TLS (optional)\n")
-
-	// File Tunnel options
-	fmt.Fprintf(os.Stderr, "File Tunnel Options (--tunnel_type file):\n")
-	fmt.Fprintf(os.Stderr, "  --local <path>\t[REQUIRED] Local directory to share (e.g., ./files)\n")
-	fmt.Fprintf(os.Stderr, "  --name <name>\t\tName for the tunnel (optional)\n")
-	fmt.Fprintf(os.Stderr, "  --username <user>\tUsername for authentication (optional)\n")
-	fmt.Fprintf(os.Stderr, "  --password <pass>\tPassword for authentication (optional)\n\n")
-
-	// TCP Entrypoint options
-	fmt.Fprintf(os.Stderr, "TCP Entrypoint Options (--entrypoint --tcp):\n")
-	fmt.Fprintf(os.Stderr, "  --entrypoint\t\tCreate an entrypoint\n")
-	fmt.Fprintf(os.Stderr, "  --tcp\t\t\tUse TCP protocol\n")
-	fmt.Fprintf(os.Stderr, "  --local <endpoint>\t[REQUIRED] Local endpoint to forward to (e.g., 127.0.0.1:22)\n")
-	fmt.Fprintf(os.Stderr, "  --name <name>\t\tName for the entrypoint (optional)\n")
-	fmt.Fprintf(os.Stderr, "  --tunnel_id <id>\t[REQUIRED] Tunnel ID to connect to\n")
-
-	// UDP Entrypoint options
-	fmt.Fprintf(os.Stderr, "UDP Entrypoint Options (--entrypoint --udp):\n")
-	fmt.Fprintf(os.Stderr, "  --entrypoint\t\tCreate an entrypoint\n")
-	fmt.Fprintf(os.Stderr, "  --udp\t\t\tUse UDP protocol\n")
-	fmt.Fprintf(os.Stderr, "  --local <endpoint>\t[REQUIRED] Local endpoint to forward to (e.g., 127.0.0.1:553)\n")
-	fmt.Fprintf(os.Stderr, "  --name <name>\t\tName for the entrypoint (optional)\n")
-	fmt.Fprintf(os.Stderr, "  --tunnel_id <id>\t[REQUIRED] Tunnel ID to connect to\n")
-	fmt.Fprintf(os.Stderr, "  --ttl <seconds>\tTime to live for UDP packets with keep-alive (optional)\n\n")
-
-	// Global options
-	fmt.Fprintf(os.Stderr, "Global Options:\n")
-	fmt.Fprintf(os.Stderr, "  --help, -h\t\tShow this help message\n")
-	fmt.Fprintf(os.Stderr, "  --version, -v\t\tShow version information\n")
-	fmt.Fprintf(os.Stderr, "  --no-stats\t\tDisable statistics for daemon mode\n")
-	fmt.Fprintf(os.Stderr, "  --stats-interval\tStats update interval (default: 1s)\n")
-	fmt.Fprintf(os.Stderr, "  --monitor-interval\tTunnel connection monitoring interval (default: 60s)\n\n")
-
-	// Management commands
-	fmt.Fprintf(os.Stderr, "Management Commands:\n")
-	fmt.Fprintf(os.Stderr, "  --list\t\tList all tunnels and entrypoints\n")
-	fmt.Fprintf(os.Stderr, "  --tunnels\t\tList all tunnels\n")
-	fmt.Fprintf(os.Stderr, "  --entrypoints\t\tList all entrypoints\n")
-	fmt.Fprintf(os.Stderr, "  --delete <id>\t\tDelete tunnel or entrypoint by ID\n\n")
-
-	// Examples
-	fmt.Fprintf(os.Stderr, "Examples:\n")
-	fmt.Fprintf(os.Stderr, "  # Start all configured tunnels and entrypoints\n")
-	fmt.Fprintf(os.Stderr, "  %s\n\n", appName())
-
-	fmt.Fprintf(os.Stderr, "  # Create a simple HTTP tunnel\n")
-	fmt.Fprintf(os.Stderr, "  %s --local localhost:8080 --name web-service\n\n", appName())
-
-	fmt.Fprintf(os.Stderr, "  # Create a TCP tunnel\n")
-	fmt.Fprintf(os.Stderr, "  %s --local 192.168.1.100:22 --tunnel_type tcp --name \"SSH Access\"\n\n", appName())
-
-	fmt.Fprintf(os.Stderr, "  # Create a TCP entrypoint\n")
-	fmt.Fprintf(os.Stderr, "  %s --entrypoint --tcp --local localhost:2222 --tunnel_id \"tunnel-id-here\" --name \"SSH Access\"\n\n", appName())
-
-	fmt.Fprintf(os.Stderr, "  # Create a UDP entrypoint with TTL\n")
-	fmt.Fprintf(os.Stderr, "  %s --entrypoint --udp --local localhost:553 --tunnel_id \"tunnel-id-here\" --name \"DNS Server\" --ttl 120\n\n", appName())
-
-	fmt.Fprintf(os.Stderr, "  # Run as a daemon without statistics\n")
-	fmt.Fprintf(os.Stderr, "  %s --no-stats\n\n", appName())
-
-	fmt.Fprintf(os.Stderr, "  # List tunnels and entrypoints\n")
-	fmt.Fprintf(os.Stderr, "  %s --list\n\n", appName())
-
-	fmt.Fprintf(os.Stderr, "  # List tunnels\n")
-	fmt.Fprintf(os.Stderr, "  %s --tunnels\n\n", appName())
-
-	fmt.Fprintf(os.Stderr, "  # List entrypoints\n")
-	fmt.Fprintf(os.Stderr, "  %s --entrypoints\n\n", appName())
-
-	fmt.Fprintf(os.Stderr, "  # Delete tunnel or entrypoint\n")
-	fmt.Fprintf(os.Stderr, "  %s --delete \"tunnel-or-entrypoint-id\"\n\n", appName())
+		fmt.Sprintf("AUTH_PASSWORD=secret %s tls 443 -n \"Name\" -u test_user -hostname iot-host", appName()),
+		fmt.Sprintf("%s tls localhost:443 -n \"Name\"", appName()),
+		fmt.Sprintf("%s tls 192.168.0.100:443 -n \"Name\"", appName()),
+	}
+	return strings.Join(usages, "\n")
 }
 
-// Returns a formatted version string
-func GetVersion() string {
-	return fmt.Sprintf("GOST+ CLI Version %s\n", version.Version)
+func getFileTunnelUsageText() string {
+	usages := []string{
+		fmt.Sprintf("%s file <files_dir> [options]\n", appName()),
+
+		fmt.Sprintf("AUTH_PASSWORD=secret %s file \"./home/user/work docs\" -n \"Name\" -u test_user", appName()),
+		fmt.Sprintf("%s file . -n \"Name\"", appName()),
+	}
+	return strings.Join(usages, "\n")
+}
+
+func getTCPTunnelUsageText() string {
+	usages := []string{
+		fmt.Sprintf("%s tcp [host:]port [options]\n", appName()),
+
+		fmt.Sprintf("%s tcp 22 -n \"Name\"", appName()),
+		fmt.Sprintf("%s tcp localhost:22 -n \"Name\"", appName()),
+		fmt.Sprintf("%s tcp 192.168.0.100:22 -n \"Name\"", appName()),
+	}
+	return strings.Join(usages, "\n")
+}
+
+func getUDPTunnelUsageText() string {
+	usages := []string{
+		fmt.Sprintf("%s udp [host:]port [options]\n", appName()),
+
+		fmt.Sprintf("%s udp 53 -n \"Name\"", appName()),
+		fmt.Sprintf("%s udp localhost:53 -n \"Name\"", appName()),
+		fmt.Sprintf("%s udp 192.168.0.100:53 -n \"Name\"", appName()),
+	}
+	return strings.Join(usages, "\n")
+}
+
+func getEntrypointsUsageText() string {
+	usages := []string{
+		fmt.Sprintf("%s bind <ID> -tcp [host:]port -n \"Name\"", appName()),
+		fmt.Sprintf("%s bind <ID> -tcp port -n \"Name\"", appName()),
+		fmt.Sprintf("%s bind <ID> -tcp localhost:port -n \"Name\"\n", appName()),
+
+		fmt.Sprintf("%s bind <ID> -udp [host:]port -n \"Name\" -ttl 120s", appName()),
+		fmt.Sprintf("%s bind <ID> -udp port -n \"Name\" -ttl 120s", appName()),
+		fmt.Sprintf("%s bind <ID> -udp localhost:port -n \"Name\" -ttl 120s", appName()),
+	}
+	return strings.Join(usages, "\n")
+}
+
+func getStartCommandUsageText() string {
+	usages := []string{
+		fmt.Sprintf("%s start [options]\nor", appName()),
+		fmt.Sprintf("%s start <ID> [options]\n", appName()),
+
+		fmt.Sprintf("%s start -name Name", appName()),
+		fmt.Sprintf("%s start -n Name -no-stats", appName()),
+		fmt.Sprintf("%s start a7a1c126-970b-4886-8ff5-455902abcfd3", appName()),
+		fmt.Sprintf("%s start -h", appName()),
+	}
+	return strings.Join(usages, "\n")
+}
+
+func getEntrypointsCommandFlags() []cli.Flag {
+	tcpAddressFlag := &cli.StringFlag{
+		Name:  "tcp",
+		Usage: "local TCP endpoint is listening to",
+	}
+	udpAddressFlag := &cli.StringFlag{
+		Name:  "udp",
+		Usage: "local UDP endpoint is listening to",
+	}
+	ttlFlag := &cli.DurationFlag{
+		Name:  "ttl",
+		Usage: "time to live for UDP, sec",
+	}
+
+	return []cli.Flag{
+		getNameCommandFlag("entrypoint"),
+		tcpAddressFlag,
+		udpAddressFlag,
+		ttlFlag,
+		getStatsIntervalFlag(),
+		getDisableStatsFlag(),
+	}
+}
+
+func createTunnelAction(cmd string) cli.ActionFunc {
+	return func(c *cli.Context) error {
+		if c.NArg() == 0 {
+			return cli.Exit(fmt.Sprintf("Error: missing address for %s command", cmd), 1)
+		}
+
+		var (
+			target    string
+			name      string
+			username  string
+			password  string
+			hostname  string
+			enableTLS bool
+		)
+
+		parser := args.NewCLIArgsParser()
+		err := parser.ParseArgs(c.Args())
+		if err != nil {
+			return cli.Exit(fmt.Sprintf("parsing arguments error: %v", err), 1)
+		}
+
+		parser.StringVar(&name, c.String("n"), "name", "n")
+		parser.StringVar(&username, c.String("u"), "username", "u")
+		password = c.String("password")
+		parser.StringVar(&hostname, c.String("hostname"), "hostname")
+		target = parser.UnboundedArg(0, "")
+
+		if len(username) > 0 && len(password) == 0 {
+			return cli.Exit("Incorrect Usage: both 'username' and $AUTH_PASSWORD are required", 1)
+		}
+
+		var tunnelType string
+		switch cmd {
+		case tunnel.HTTPTunnel:
+			tunnelType = tunnel.HTTPTunnel
+		case "tls":
+			tunnelType = tunnel.HTTPTunnel
+			enableTLS = true
+		case tunnel.FileTunnel:
+			tunnelType = tunnel.FileTunnel
+		case tunnel.TCPTunnel:
+			tunnelType = tunnel.TCPTunnel
+		case tunnel.UDPTunnel:
+			tunnelType = tunnel.UDPTunnel
+		default:
+			// Should not happen with the current commands setup
+			return cli.Exit(fmt.Sprintf("unknown command: %s", cmd), 1)
+		}
+
+		// Parse endpoint
+		if strings.HasPrefix(target, ":") { // :553
+			target = "localhost" + target
+		} else if _, _, err := net.SplitHostPort(target); err != nil { // 192.168.0.100:553
+			_, err := strconv.Atoi(target)
+			if err != nil { // 553
+				return cli.Exit(fmt.Sprintf("Invalid port number '%v'", target), 1)
+			} else {
+				// for commands like 'gost-tunnel http 8080', default to localhost
+				target = "localhost:" + target
+			}
+		}
+
+		options := tunnel.Options{
+			Name:      name,
+			Endpoint:  target,
+			Username:  username,
+			EnableTLS: enableTLS,
+			Hostname:  hostname,
+		}
+		if len(password) > 0 {
+			options.Password.Set(password)
+		}
+
+		newTun := tunnel.CreateTunnel(tunnelType, options)
+		if newTun == nil {
+			return cli.Exit(fmt.Sprintf("Error of creating %s tunnel", tunnelType), 1)
+		}
+
+		// Check if a tunnel with the same name or a service endpoint exists
+		exists := slice.Exists(tunnel.GetAll(), func(tun tunnel.Tunnel) bool {
+			return tun.Name() == newTun.Name() || tun.Endpoint() == newTun.Endpoint()
+		})
+		if exists {
+			msg := fmt.Sprintf("Duplicate tunnel detected by name or endpoint. Name: '%s', endpoint: %s", newTun.Name(), newTun.Endpoint())
+			return cli.Exit(msg, 1)
+		}
+
+		tunnel.Add(newTun)
+		tunnel.SaveConfig() // persist the tunnel
+
+		fmt.Printf("\n%s tunnel created successfully:\n", strings.ToUpper(tunnelType))
+		fmt.Printf("   ID: %s\n", newTun.ID())
+		fmt.Printf("   Name: %s\n", newTun.Name())
+		fmt.Printf("   Endpoint: %s\n", newTun.Entrypoint())
+		fmt.Printf("   Forwarding to: %s\n", newTun.Endpoint())
+
+		run(c) // Run all after creating this one
+		return nil
+	}
+}
+
+func createEntrypointAction() cli.ActionFunc {
+	return func(c *cli.Context) error {
+		if c.NArg() == 0 {
+			return cli.Exit(fmt.Sprintf("Error: missing tunnel ID"), 1)
+		}
+
+		var (
+			name          string
+			tunnelId      string
+			tcpEndpoint   string
+			udpEndpoint   string
+			localEndpoint string
+			isTCP         bool
+			ttl           time.Duration
+		)
+
+		parser := args.NewCLIArgsParser()
+		err := parser.ParseArgs(c.Args())
+		if err != nil {
+			return cli.Exit(fmt.Sprintf("parsing arguments error: %v", err), 1)
+		}
+
+		parser.StringVar(&name, c.String("n"), "name", "n")
+		parser.StringVar(&tcpEndpoint, c.String("tcp"), "tcp")
+		parser.StringVar(&udpEndpoint, c.String("udp"), "udp")
+		parser.DurationVar(&ttl, c.Duration("ttl"), "ttl")
+
+		ttlSec := ttl.Milliseconds() / 1000
+		tunnelId = parser.UnboundedArg(0, "")
+
+		if _, err := uuid.Parse(tunnelId); err != nil {
+			return cli.Exit(fmt.Sprintf("Error: invalid tunnel ID format '%s'", tunnelId), 1)
+		}
+
+		if len(tcpEndpoint) == 0 && len(udpEndpoint) == 0 {
+			return cli.Exit("Incorrect Usage: Required flag \"tcp or udp\" is not set", 1)
+		} else if len(tcpEndpoint) > 0 && len(udpEndpoint) > 0 {
+			return cli.Exit("Incorrect Usage: Only one of flags \"tcp or udp\" is required", 1)
+		}
+
+		if len(tcpEndpoint) > 0 {
+			localEndpoint = tcpEndpoint
+			isTCP = true
+		} else if len(udpEndpoint) > 0 {
+			localEndpoint = udpEndpoint
+		}
+
+		// parse endpoint
+		if strings.HasPrefix(localEndpoint, ":") { // :553
+			localEndpoint = "localhost" + localEndpoint
+		} else if _, _, err := net.SplitHostPort(localEndpoint); err != nil { // 192.168.0.100:553
+			_, err := strconv.Atoi(localEndpoint)
+			if err != nil { // 553
+				return cli.Exit(fmt.Sprintf("Invalid port number '%v'", localEndpoint), 1)
+			} else {
+				localEndpoint = "localhost:" + localEndpoint
+			}
+		}
+
+		idOpt := tunnel.IDOption(strings.ToLower(tunnelId))
+		nameOpt := tunnel.NameOption(name)
+		endpointOpt := tunnel.EndpointOption(localEndpoint)
+
+		var newEp entrypoint.EntryPoint
+		if isTCP {
+			newEp = entrypoint.NewTCPEntryPoint(idOpt, nameOpt, endpointOpt)
+		} else if ttlSec > 0 { // udp
+			var ttlOpt, keepaliveOpt tunnel.Option
+			ttlOpt = tunnel.TTLOption(int(ttlSec))
+			keepaliveOpt = tunnel.KeepaliveOption(true)
+			newEp = entrypoint.NewUDPEntryPoint(idOpt, nameOpt, endpointOpt, ttlOpt, keepaliveOpt)
+		} else { // udp
+			newEp = entrypoint.NewUDPEntryPoint(idOpt, nameOpt, endpointOpt)
+		}
+
+		exists := slice.Exists(entrypoint.GetAll(), func(ep entrypoint.EntryPoint) bool {
+			return newEp.ID() == ep.ID() ||
+				newEp.Name() == ep.Name() ||
+				newEp.Entrypoint() == ep.Entrypoint() && newEp.Type() == ep.Type()
+		})
+		if exists {
+			msg := fmt.Sprintf("Duplicate entrypoint detected by id, name or local endpoint. Name: '%s', endpoint: %s", newEp.Name(), newEp.Entrypoint())
+			return cli.Exit(msg, 1)
+		}
+
+		entrypoint.Add(newEp)
+		entrypoint.SaveConfig()
+
+		fmt.Printf("\n%s entrypoint created successfully:\n", strings.ToUpper(newEp.Type()))
+		fmt.Printf("   ID: %s\n", newEp.ID())
+		fmt.Printf("   Name: %s\n", newEp.Name())
+		fmt.Printf("   Listening on %s\n", newEp.Entrypoint())
+		fmt.Printf("   Forwarding to remote endpoint: %s\n\n", newEp.Endpoint())
+
+		run(c) // Run all after creating this one
+		return nil
+	}
+}
+
+// starts a specific tunnel or entrypoint by ID or -name or all if no any arguments provided
+func handleStartAction() cli.ActionFunc {
+	return func(c *cli.Context) error {
+		name := c.String("name")
+		parser := args.NewCLIArgsParser()
+		parser.ParseArgs(c.Args())
+
+		if id := parser.UnboundedArg(0, ""); id != "" && name == "" {
+			if _, err := uuid.Parse(id); err != nil {
+				return cli.Exit(fmt.Sprintf("Invalid ID format: %s", id), 1)
+			}
+
+			id = strings.ToLower(id)
+			tun := tunnel.Get(id)
+			ep := entrypoint.Get(id)
+			if tun != nil && ep != nil {
+				fmt.Println("Starting specific tunnel and entrypoint by ID...")
+				return runEntities([]tunnel.Tunnel{tun}, []entrypoint.EntryPoint{ep})
+			} else if tun != nil {
+				fmt.Println("Starting the tunnel with ID...")
+				return runEntities([]tunnel.Tunnel{tun}, []entrypoint.EntryPoint{})
+			} else if ep != nil {
+				fmt.Println("Starting the entrypoint with ID...")
+				return runEntities([]tunnel.Tunnel{}, []entrypoint.EntryPoint{ep})
+			}
+
+			return cli.Exit(fmt.Sprintf("No tunnel or entrypoint found with ID: %s", id), 0)
+		}
+
+		// If no name or ID is provided, start all
+		if name == "" {
+			fmt.Println("Starting all configured tunnels and entrypoints...")
+			run(c)
+			return nil
+		}
+
+		// Try to find by name
+		var tunnels []tunnel.Tunnel
+		var entrypoints []entrypoint.EntryPoint
+
+		if tun := getTunnelFromConfig(name); tun != nil {
+			tunnels = append(tunnels, tun)
+		}
+		if ep := getEntrypointFromConfig(name); ep != nil {
+			entrypoints = append(entrypoints, ep)
+		}
+
+		if !slice.Any(slices.Concat(tunnels, entrypoints)) {
+			return cli.Exit(fmt.Sprintf("No tunnel or entrypoint found with name: %s", name), 0)
+		}
+
+		fmt.Println("Starting specific tunnel/entrypoint...")
+		return runEntities(tunnels, entrypoints)
+	}
+}
+
+func showConfigSafeAction() cli.ActionFunc {
+	return func(c *cli.Context) error {
+		cfg := config.Get()
+		safeCfg := *cfg // create a deep copy
+		safeCfg.Tunnels = make([]*config.Tunnel, len(cfg.Tunnels))
+		for i, tun := range cfg.Tunnels {
+			if tun == nil {
+				continue
+			}
+			safeTun := *tun
+			if !safeTun.Password.IsEmpty() {
+				// hide an actual password if it's defined
+				safeTun.Password = config.NewPassword(safeTun.Password.String())
+			}
+			safeCfg.Tunnels[i] = &safeTun
+		}
+		data, err := yaml.Marshal(safeCfg) // serialize the config to YAML
+		if err != nil {
+			return fmt.Errorf("failed to serialize config: %w", err)
+		}
+		fmt.Println()
+		fmt.Println(string(data))
+		return nil
+	}
+}
+
+// finds a tunnel by its name
+func getTunnelFromConfig(name string) tunnel.Tunnel {
+	tunnelOpt := slice.First(tunnel.GetAll(), func(tun tunnel.Tunnel) bool {
+		return tun != nil && strings.EqualFold(tun.Name(), name)
+	})
+	return tunnelOpt.GetOrElse(nil)
+}
+
+// finds an entrypoint by its name
+func getEntrypointFromConfig(name string) entrypoint.EntryPoint {
+	entrypointOpt := slice.First(entrypoint.GetAll(), func(ep entrypoint.EntryPoint) bool {
+		return ep != nil && strings.EqualFold(ep.Name(), name)
+	})
+	return entrypointOpt.GetOrElse(nil)
+}
+
+// runs specific tunnels/entrypoints
+func runEntities(tunnels []tunnel.Tunnel, entrypoints []entrypoint.EntryPoint) error {
+	if !slice.Any(tunnels) && !slice.Any(entrypoints) {
+		return nil
+	}
+
+	// Initialize context and shutdown handler
+	ctx, cancel := waitForShutdown()
+	defer cancel()
+
+	runAll := func(items []tunnel.Tunnel) []tunnel.Tunnel {
+		var started []tunnel.Tunnel
+		slice.ForEach(items, func(item tunnel.Tunnel) {
+			if err := item.Run(); err != nil {
+				item.Close()
+				fmt.Fprintf(os.Stderr, "%s %s failed: %v", strings.ToUpper(item.Type()), item.Name(), err)
+				return
+			}
+			started = append(started, item)
+		})
+		return started
+	}
+
+	if slice.Any(tunnels) {
+		startedTunnels := runAll(tunnels)
+		listEntities("Started tunnels", startedTunnels)
+
+		monitorInterval = opt.Cond(monitorInterval.Seconds() > 0, monitorInterval).GetOrElse(DefaultMonitorInterval)
+		if err := startTunnelsMonitoring(ctx, monitorInterval, tunnels); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to start tunnels monitoring: %v", err)
+		}
+	}
+	if slice.Any(entrypoints) {
+		startedEntrypoints := runAll(entrypoints)
+		listEntities("Started entrypoints", startedEntrypoints)
+	}
+
+	if !statsDisabled {
+		statsInterval = opt.Cond(statsInterval.Seconds() > 0, statsInterval).GetOrElse(DefaultStatsInterval)
+		startStatsRunner(ctx, statsInterval)
+		go stats.DisplayStats(ctx, statsInterval)
+		fmt.Printf("\nPress Ctrl+C to exit\n\n")
+	}
+
+	// Wait for context cancellation triggered by the signal of interruption
+	<-ctx.Done()
+	fmt.Println("Done")
+	return nil
+}
+
+// runs all tunnels and entrypoints from the config
+func run(c *cli.Context) {
+	// get all non-closed tunnels and entrypoints
+	tunnels := slice.Filter(tunnel.GetAll(), func(tun tunnel.Tunnel) bool {
+		return tun != nil && !tun.IsClosed()
+	})
+	entrypoints := slice.Filter(entrypoint.GetAll(), func(tun entrypoint.EntryPoint) bool {
+		return tun != nil && !tun.IsClosed()
+	})
+
+	if !slice.Any(slices.Concat(tunnels, entrypoints)) {
+		fmt.Fprintln(os.Stderr, "No tunnels or entrypoints are configured")
+		cli.ShowAppHelpAndExit(c, 0)
+	}
+
+	if err := runEntities(tunnels, entrypoints); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 // Deletes a tunnel by ID
 func deleteTunnel(id string) error {
-	if tunnel.Count() == 0 {
-		return nil
-	}
-
-	tun := tunnel.Get(id) // nilable
+	tun := tunnel.Get(id)
 	if tun == nil {
-		return nil
+		return fmt.Errorf("tunnel with id %s not found", id)
 	}
 
 	em := entitymanager.NetworkEntityManager{
@@ -323,13 +846,9 @@ func deleteTunnel(id string) error {
 
 // Deletes an entrypoint by ID
 func deleteEntryPoint(id string) error {
-	if entrypoint.Count() == 0 {
-		return nil
-	}
-
 	ep := entrypoint.Get(id)
 	if ep == nil {
-		return nil
+		return fmt.Errorf("entrypoint with id %s not found", id)
 	}
 
 	em := entitymanager.NetworkEntityManager{
@@ -348,30 +867,32 @@ func deleteEntryPoint(id string) error {
 // Lists all configured tunnels
 func listAllTunnels() {
 	count := tunnel.Count()
-	listEntities("tunnels", entitymanager.MakeEntityIterator(count, tunnel.GetIndex))
-}
-func listAllEntryPoints() {
-	count := entrypoint.Count()
-	listEntities("entrypoints", entitymanager.MakeEntityIterator(count, entrypoint.GetIndex))
+	if count == 0 {
+		fmt.Println("No tunnels are configured.")
+		return
+	}
+	listEntities("Available tunnels", tunnel.GetAll())
 }
 
-func listEntities(entitiesType string, next entitymanager.EntityIteratorFn) {
-	fmt.Printf("\nAvailable %s:\n", entitiesType)
+func listAllEntryPoints() {
+	count := entrypoint.Count()
+	if count == 0 {
+		fmt.Println("No entrypoints are configured.")
+		return
+	}
+	listEntities("Available entrypoints", entrypoint.GetAll())
+}
+
+func listEntities(title string, items []tunnel.Tunnel) {
+	fmt.Printf("\n%s:\n", title)
 	fmt.Println("------------------------------------------------------------------------------")
 	fmt.Printf("%-38s %-20s %-10s %-10s\n", "ID", "NAME", "TYPE", "STATUS")
 	fmt.Println("------------------------------------------------------------------------------")
 
-	for {
-		manager, ok := next()
-		if !ok {
-			break
-		}
-		entityPtr := manager.Entity
-		if entityPtr == nil {
+	for _, entity := range items {
+		if entity == nil {
 			continue
 		}
-		entity := *entityPtr
-
 		fmt.Printf("%-38s %-20s %-10s %-10s\n",
 			entity.ID(),
 			entity.Name(),
@@ -382,149 +903,8 @@ func listEntities(entitiesType string, next entitymanager.EntityIteratorFn) {
 	}
 }
 
-/**
- * Creates and runs a new tunnel
- */
-func createTunnel(flags CommandFlags) tunnel.Tunnel {
-	tunnelType := strings.ToLower(flags.TunnelType)
-
-	validTypes := map[string]bool{
-		tunnel.HTTPTunnel: true,
-		tunnel.FileTunnel: true,
-		tunnel.TCPTunnel:  true,
-		tunnel.UDPTunnel:  true,
-	}
-
-	// Validate a supported tunnel type
-	if !validTypes[tunnelType] {
-		fmt.Printf("Unsupported tunnel type: %s. Valid: http, file, tcp, udp\n", tunnelType)
-		os.Exit(1)
-	}
-
-	// Check if the tunnel exists
-	for i := range tunnel.Count() {
-		tun := tunnel.GetIndex(i)
-		if tun == nil {
-			continue
-		}
-
-		localEndpoint := tun.Endpoint()
-		if localEndpoint == flags.LocalEndpoint && tun.Type() == tunnelType {
-			fmt.Printf("%s tunnel '%s' is found in state: %v, ID: %s\n",
-				strings.ToUpper(tun.Type()),
-				localEndpoint,
-				utils.GetState(tun),
-				tun.ID())
-			fmt.Println("Remove it first to update or create a new one")
-			return nil
-		}
-	}
-
-	defer tunnel.SaveConfig()
-
-	options := tunnel.Options{
-		Name:     flags.ServiceName,
-		Endpoint: flags.LocalEndpoint,
-		Username: flags.Username,
-	}
-	if flags.Password != "" {
-		options.Password.Set(flags.Password)
-	}
-	if tunnelType == tunnel.HTTPTunnel {
-		options.EnableTLS = flags.EnableTLS
-		options.Hostname = flags.Hostname
-	}
-
-	var newTunnel = tunnel.CreateTunnel(tunnelType, options)
-	if newTunnel == nil {
-		fmt.Printf("Failed to create %s tunnel\n", tunnelType)
-		os.Exit(1)
-	}
-
-	// Add tunnel to the global list for stats tracking
-	tunnel.Add(newTunnel)
-
-	// Run the tunnel
-	if err := newTunnel.Run(); err != nil {
-		newTunnel.Close()
-		fmt.Printf("Failed to start tunnel: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Print out the tunnel information
-	fmt.Printf("\n%s tunnel is started:\n", strings.ToUpper(tunnelType))
-	fmt.Printf("ID: %s\n", newTunnel.ID())
-	fmt.Printf("Name: %s\n", newTunnel.Name())
-
-	if flags.TunnelType == tunnel.FileTunnel {
-		fmt.Printf("Local folder: %s\n", newTunnel.Endpoint())
-		fmt.Printf("Remote entrypoint: %s\n", newTunnel.Entrypoint())
-	} else if flags.TunnelType == tunnel.HTTPTunnel {
-		fmt.Printf("Local endpoint: %s\n", newTunnel.Endpoint())
-		fmt.Printf("Remote entrypoint: %s\n", newTunnel.Entrypoint())
-	} else if flags.TunnelType == tunnel.TCPTunnel {
-		fmt.Printf("TCP tunnel, endpoint: %s\n", newTunnel.Endpoint())
-	} else {
-		fmt.Printf("UDP tunnel, endpoint: %s\n", newTunnel.Endpoint())
-	}
-
-	return newTunnel
-}
-
-/**
- * Creates a new entrypoint and connect it to a remote tunnel
- */
-func createEntryPoint(flags CommandFlags) error {
-	defer entrypoint.SaveConfig()
-
-	var ep entrypoint.EntryPoint
-	tunnelId := strings.TrimSpace(flags.TunnelID)
-	idOpt := tunnel.IDOption(tunnelId)
-	nameOpt := tunnel.NameOption(strings.TrimSpace(flags.ServiceName))
-	endpointOpt := tunnel.EndpointOption(strings.TrimSpace(flags.LocalEndpoint))
-
-	// Check if the entrypoint exists
-	ep = entrypoint.Get(tunnelId)
-	if ep != nil {
-		fmt.Printf("%s entrypoint '%s' is found in state: %v, ID: %s\n",
-			strings.ToUpper(ep.Type()),
-			ep.Endpoint(),
-			utils.GetState(ep),
-			ep.ID())
-		fmt.Println("Remove it first to update or create a new one")
-		return nil
-	}
-
-	if flags.TCPFlag {
-		ep = entrypoint.NewTCPEntryPoint(idOpt, nameOpt, endpointOpt)
-	} else { // UDP
-		var keepaliveOpt tunnel.Option
-		var ttlOpt tunnel.Option
-		if flags.TTLSec > 0 {
-			keepaliveOpt = tunnel.KeepaliveOption(true)
-			ttlOpt = tunnel.TTLOption(flags.TTLSec)
-		}
-		ep = entrypoint.NewUDPEntryPoint(idOpt, nameOpt, endpointOpt, keepaliveOpt, ttlOpt)
-	}
-
-	entrypoint.Add(ep)
-
-	if err := ep.Run(); err != nil {
-		ep.Close()
-		return err
-	}
-
-	// Print out the entrypoint information
-	fmt.Printf("\n%s entrypoint is connected to %s:\n", strings.ToUpper(ep.Type()), ep.Endpoint())
-	fmt.Printf("ID: %s\n", ep.ID())
-	fmt.Printf("Name: %s\n", ep.Name())
-	fmt.Printf("Listening to %s locally\n", ep.Entrypoint())
-
-	return nil
-}
-
 // Start statistics updater
-func startStatsRunner(ctx context.Context, interval time.Duration) {
+func startStatsRunner(ctx context.Context, interval time.Duration) error {
 	err := runner.Exec(ctx, task.UpdateStats(),
 		runner.WithAsync(true),
 		runner.WithInterval(interval),
@@ -532,31 +912,18 @@ func startStatsRunner(ctx context.Context, interval time.Duration) {
 	)
 	if err != nil {
 		logger.Default().Error(err)
+		return err
 	}
+	return nil
 }
 
-// Waits for a signal shutdown
-func waitForShutdown(doneChan chan struct{}) {
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	// Wait for shutdown signal
-	<-sigChan
-	close(doneChan) // Signal stats display to stop
-
-	fmt.Println("\nDone")
-}
-
-// Starts monitoring of tunnels and entrypoints connections
-func startTunnelMonitor(ctx context.Context, interval time.Duration) error {
-	return startTunnelMonitorWithDelay(ctx, interval, 0)
-}
-
-// Starts monitoring of tunnels and entrypoints connections with initial delay
-func startTunnelMonitorWithDelay(ctx context.Context, interval time.Duration, delay time.Duration) error {
-	err := runner.Exec(ctx, task.NewMonitorTask(),
+// Starts monitoring of tunnels and entrypoints connections with an initial delay
+func startTunnelsMonitoring(ctx context.Context, interval time.Duration, tunnels []tunnel.Tunnel) error {
+	fmt.Printf("Starting tunnels monitoring with the interval %v...\n", interval)
+	tunnelsID := slice.Map(tunnels, func(tun tunnel.Tunnel) string { return tun.ID() })
+	err := runner.Exec(ctx, task.NewMonitorTaskFor(tunnelsID),
 		runner.WithAsync(true),
-		runner.WithDelay(delay),
+		runner.WithDelay(interval),
 		runner.WithInterval(interval),
 		runner.WithCancel(true),
 	)
@@ -565,4 +932,19 @@ func startTunnelMonitorWithDelay(ctx context.Context, interval time.Duration, de
 		return err
 	}
 	return nil
+}
+
+// Waits for a shutdown signal
+func waitForShutdown() (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		fmt.Println("\nShutting down gracefully...")
+		cancel()
+	}()
+
+	return ctx, cancel
 }

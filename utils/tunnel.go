@@ -19,7 +19,7 @@ func GetDisplayState(instance tunnel.Tunnel) string {
 }
 
 func GetState(tun tunnel.Tunnel) service.State {
-	defaultState := service.StateFailed
+	defaultState := service.StateReady
 	if tun.IsClosed() {
 		defaultState = service.StateClosed
 	}

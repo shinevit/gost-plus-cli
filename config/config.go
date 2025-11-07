@@ -7,8 +7,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-gost/core/logger"
 	xconfig "github.com/go-gost/x/config"
@@ -32,24 +34,9 @@ func init() {
 func Init() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{AddSource: true})))
 
-	dir := os.Getenv("GOST_CONFIG_DIR")
-	var err error
-	if dir == "" {
-		dir, err = os.UserConfigDir()
-		if err != nil {
-			dir, err = os.UserHomeDir()
-		}
-	}
-	if err != nil {
-		slog.Error(fmt.Sprintf("appDir: %v", err))
-	}
-	if dir == "" {
-		dir, _ = os.Getwd()
-	}
-	configDir = filepath.Join(dir, "gost.plus")
+	configDir = ConfigDir()
 	os.MkdirAll(configDir, 0755)
-
-	slog.Info(fmt.Sprintf("appDir: %s", configDir))
+	slog.Debug(fmt.Sprintf("appDir: %s", configDir))
 
 	cfg := Get()
 	if err := cfg.load(); err != nil {
@@ -66,12 +53,12 @@ func Init() {
 func initLog() {
 	cfg := Get().Log
 	if cfg == nil {
-		logDir := filepath.Join(configDir, "logs")
+		logDir := LogDir()
 		os.MkdirAll(logDir, 0755)
-		slog.Info(fmt.Sprintf("log dir: %s", logDir))
+		slog.Debug(fmt.Sprintf("log dir: %s", logDir))
 
 		cfg = &xconfig.LogConfig{
-			Output: filepath.Join(logDir, logFile),
+			Output: LogFilePath(),
 			Level:  string(logger.InfoLevel),
 			Format: string(logger.JSONFormat),
 			Rotation: &xconfig.LogRotationConfig{
@@ -134,14 +121,14 @@ type Tunnel struct {
 }
 
 type Config struct {
-	Settings    *Settings
+	Settings    *Settings `yaml:",omitempty"`
 	Tunnels     []*Tunnel
 	EntryPoints []*Tunnel
 	Log         *xconfig.LogConfig
 }
 
 func (c *Config) load() error {
-	f, err := os.Open(filepath.Join(configDir, configFile))
+	f, err := os.Open(ConfigFilePath())
 	if err != nil {
 		return err
 	}
@@ -163,24 +150,38 @@ func (c *Config) Write() error {
 	return os.WriteFile(filepath.Join(configDir, configFile), buf.Bytes(), 0600)
 }
 
-// encodePassword encodes a password string to base64
-func encodePassword(password string) string {
-	if password == "" {
-		return ""
+func ConfigDir() string {
+	if len(configDir) > 0 {
+		return configDir
 	}
-	return base64.StdEncoding.EncodeToString([]byte(password))
+
+	dir := os.Getenv("GOST_CONFIG_DIR")
+	var err error
+	if dir == "" {
+		dir, err = os.UserConfigDir()
+		if err != nil {
+			dir, err = os.UserHomeDir()
+		}
+	}
+	if err != nil {
+		slog.Error(fmt.Sprintf("appDir: %v", err))
+	}
+	if dir == "" {
+		dir, _ = os.Getwd()
+	}
+	return filepath.Join(dir, "gost.plus")
 }
 
-// decodePassword decodes a base64 encoded password string
-func decodePassword(encodedPassword string) (string, error) {
-	if encodedPassword == "" {
-		return "", nil
-	}
-	decoded, err := base64.StdEncoding.DecodeString(encodedPassword)
-	if err != nil {
-		return "", fmt.Errorf("failed to decode password: %w", err)
-	}
-	return string(decoded), nil
+func LogDir() string {
+	return filepath.Join(ConfigDir(), "logs")
+}
+
+func ConfigFilePath() string {
+	return filepath.Join(ConfigDir(), configFile)
+}
+
+func LogFilePath() string {
+	return filepath.Join(LogDir(), logFile)
 }
 
 type ServiceStats struct {
@@ -195,14 +196,49 @@ type ServiceStats struct {
 	OutputRateBytes uint64
 }
 
+// Encodes a string to base64
+func encodePassword(plainSecret string) string {
+	if plainSecret == "" {
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString([]byte(plainSecret))
+}
+
+// Decodes a base64 encoded string
+func decodePassword(encodedSecret string) (string, error) {
+	if encodedSecret == "" {
+		return "", nil
+	}
+	decoded, err := base64.StdEncoding.DecodeString(encodedSecret)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode password: %w", err)
+	}
+	return string(decoded), nil
+}
+
 // Password represents an encoded password that handles base64 encoding/decoding
 type Password string
 
-// String returns the decoded password string
+func NewPassword(value string) Password {
+	return Password(value)
+}
+
+// Hides from fmt.Println(s) logging
 func (p Password) String() string {
-	if p == "" {
+	return strings.Repeat("*", p.Length())
+}
+
+// Prevents from logging it: fmt.Printf("%+v\n", s). Output: *****
+func (p Password) GoString() string {
+	return p.String()
+}
+
+// Returns the decoded/plain password string
+func (p Password) Reveal() string {
+	if p.IsEmpty() {
 		return ""
 	}
+
 	decoded, err := decodePassword(string(p))
 	if err != nil {
 		// If decoding fails, return the original string (for backward compatibility)
@@ -211,12 +247,17 @@ func (p Password) String() string {
 	return decoded
 }
 
-// Set encodes and sets the password
+// Encodes and sets the password
 func (p *Password) Set(password string) {
 	*p = Password(encodePassword(password))
 }
 
-// IsEmpty returns true if the password is empty
+// Returns true if the password is empty
 func (p Password) IsEmpty() bool {
-	return p.String() == ""
+	return string(p) == ""
+}
+
+// Return a length of plain password
+func (p Password) Length() int {
+	return utf8.RuneCountInString(p.Reveal())
 }

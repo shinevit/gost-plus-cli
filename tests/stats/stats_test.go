@@ -2,6 +2,7 @@ package stats
 
 import (
 	"bytes"
+	"context"
 	"testing"
 	"time"
 
@@ -61,8 +62,6 @@ func createActiveMockEntrypoint(t *testing.T, id, name, entrypointType string) *
 func TestDisplayStats_Shows_LatestStats_ForTunnels(t *testing.T) {
 	// Arrange
 	mockTunnel := createActiveMockTunnel(t, "test-tunnel-id", "test-tunnel", "http")
-
-	// Setup mock expectations for the tunnel with updated stats
 	mockTunnel.On("Stats").Return(config.ServiceStats{
 		CurrentConns:    5,
 		TotalConns:      15,
@@ -71,14 +70,13 @@ func TestDisplayStats_Shows_LatestStats_ForTunnels(t *testing.T) {
 		OutputBytes:     3145728, // 3 MB
 		InputBytes:      5242880, // 5 MB
 		TotalErrs:       2,
-	}).Maybe() // Use Maybe() since we don't know exactly how many times it will be called
-
+	}).Maybe() // Maybe() is used since we don't know exactly how many times it will be called
 	tunnels := []tunnel.Tunnel{mockTunnel}
 	cleanup := setupTestEnvironment(tunnels, nil)
 	defer cleanup()
 
 	// Act
-	done := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
 	outputChan := make(chan string, 1)
 
 	go func() {
@@ -87,24 +85,20 @@ func TestDisplayStats_Shows_LatestStats_ForTunnels(t *testing.T) {
 		stats.StdOutWriter = &buf
 		defer func() { stats.StdOutWriter = old }()
 
-		stats.DisplayStats(done, 20*time.Millisecond)
+		stats.DisplayStats(ctx, 20*time.Millisecond)
 		outputChan <- buf.String()
 	}()
 
-	// Wait for stats to be displayed
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond) // wait for stats to be displayed
 
-	// Close the done channel to stop the stats display
-	close(done)
+	cancel() // cancel the context to stop the stats display
 
-	// Get the output
-	output := <-outputChan
+	output := <-outputChan // get the output
 
 	// Assert
-	assert.Contains(t, output, "Monitoring 1 tunnels.", "Should show correct monitoring title")
+	assert.Contains(t, output, "Statistics is updating for 1 tunnels", "Should show correct monitoring title")
 	assert.Contains(t, output, "[test-tunnel-HTTP]", "Should display tunnel name and type")
 
-	// Check for stats in the output
 	assert.Contains(t, output, "Conn: 5/15", "Should show current and total connections")
 	assert.Contains(t, output, "↑ 5.00 KB/s", "Should show upload speed")
 	assert.Contains(t, output, "↓ 7.00 KB/s", "Should show download speed")
@@ -115,8 +109,6 @@ func TestDisplayStats_Shows_LatestStats_ForTunnels(t *testing.T) {
 func TestDisplayStats_Shows_Last_Indicators(t *testing.T) {
 	// Arrange
 	mockTunnel := createActiveMockTunnel(t, "test-tunnel-id", "test-tunnel", "http")
-
-	// Setup mock expectations for the tunnel
 	mockTunnel.On("Stats").Return(config.ServiceStats{
 		CurrentConns:    1,
 		TotalConns:      1,
@@ -127,7 +119,7 @@ func TestDisplayStats_Shows_Last_Indicators(t *testing.T) {
 		TotalErrs:       0,
 	}).Once()
 
-	// Second call: zero rates (should show last non-zero rates)
+	// second call: zero rates (should show last non-zero rates)
 	mockTunnel.On("Stats").Return(config.ServiceStats{
 		CurrentConns:    1,
 		TotalConns:      1,
@@ -138,7 +130,7 @@ func TestDisplayStats_Shows_Last_Indicators(t *testing.T) {
 		TotalErrs:       0,
 	}).Once()
 
-	// Allow additional calls to Stats() with zero values
+	// sllow additional calls to Stats() with zero values
 	mockTunnel.On("Stats").Return(config.ServiceStats{
 		CurrentConns:    1,
 		TotalConns:      1,
@@ -154,37 +146,35 @@ func TestDisplayStats_Shows_Last_Indicators(t *testing.T) {
 	defer cleanup()
 
 	// Act
-	done := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
 	outputChan := make(chan string, 1)
 	completed := make(chan bool, 1)
 
-	// Create a custom writer that captures output
+	// create a custom writer that captures output
 	var buf bytes.Buffer
 	oldWriter := stats.StdOutWriter
 	stats.StdOutWriter = &buf
 	defer func() { stats.StdOutWriter = oldWriter }()
 
-	// Start the display stats in a goroutine
 	go func() {
-		stats.DisplayStats(done, 10*time.Millisecond) // Shorter interval for faster test
+		stats.DisplayStats(ctx, 10*time.Millisecond) // shorter interval for faster test
 		outputChan <- buf.String()
 		close(completed)
 	}()
 
-	// Wait for at least one update
+	// wait for at least one update
 	time.Sleep(50 * time.Millisecond)
 
-	// Stop the display stats
-	close(done)
+	cancel() // stop the display stats
 
-	// Wait for completion with timeout
+	// wait for completion with timeout
 	select {
 	case <-completed:
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("Test timed out waiting for DisplayStats to complete")
 	}
 
-	// Get the output
+	// get the output
 	output := ""
 	select {
 	case output = <-outputChan:
@@ -192,15 +182,14 @@ func TestDisplayStats_Shows_Last_Indicators(t *testing.T) {
 		output = buf.String()
 	}
 
-	// Should show the last non-zero rates with "(last)" indicator
+	// Assert
+	// should show the last non-zero rates with "(last)" indicator
 	assert.Contains(t, output, "(last)", "Should show (last) indicator for non-zero rates")
-
 	mockTunnel.AssertExpectations(t)
 }
 
 func TestDisplayStats_ActiveTunnelAndEntrypointCount(t *testing.T) {
 	// Arrange
-	// Active tunnel - use Maybe() for methods that might be called multiple times
 	mockTunnel1 := createActiveMockTunnel(t, "tunnel-1", "test-tunnel", "http")
 	mockTunnel1.On("IsActive").Return(true).Maybe()
 	mockTunnel1.On("IsClosed").Return(false).Maybe()
@@ -217,12 +206,12 @@ func TestDisplayStats_ActiveTunnelAndEntrypointCount(t *testing.T) {
 		TotalErrs:       2,
 	}).Maybe()
 
-	// Closed tunnel
+	// closed tunnel
 	mockTunnel2 := tunnel.NewMockTunnel(t)
 	mockTunnel2.On("IsActive").Return(false).Maybe()
 	mockTunnel2.On("IsClosed").Return(true).Maybe()
 
-	// Active entrypoint
+	// active entrypoint
 	mockEntrypoint1 := createActiveMockEntrypoint(t, "ep-1", "test-entrypoint", "tcp")
 	mockEntrypoint1.On("IsActive").Return(true).Maybe()
 	mockEntrypoint1.On("IsClosed").Return(false).Maybe()
@@ -239,7 +228,7 @@ func TestDisplayStats_ActiveTunnelAndEntrypointCount(t *testing.T) {
 		TotalErrs:       1,
 	}).Maybe()
 
-	// Closed entrypoint
+	// closed entrypoint
 	mockEntrypoint2 := tunnel.NewMockTunnel(t)
 	mockEntrypoint2.On("IsActive").Return(false).Maybe()
 	mockEntrypoint2.On("IsClosed").Return(true).Maybe()
@@ -250,40 +239,37 @@ func TestDisplayStats_ActiveTunnelAndEntrypointCount(t *testing.T) {
 	cleanup := setupTestEnvironment(tunnels, entrypoints)
 	defer cleanup()
 
-	// Create a custom writer that captures output
 	var buf bytes.Buffer
 	oldWriter := stats.StdOutWriter
 	stats.StdOutWriter = &buf
 	defer func() { stats.StdOutWriter = oldWriter }()
 
 	// Act
-	done := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
 	completed := make(chan struct{})
 
-	// Start the display stats in a goroutine
+	// start the display stats
 	go func() {
-		stats.DisplayStats(done, 10*time.Millisecond) // Shorter interval for faster test
+		stats.DisplayStats(ctx, 10*time.Millisecond)
 		close(completed)
 	}()
 
-	// Wait for at least one update (reduced time to speed up test)
+	// wait for at least one update (reduced time to speed up test)
 	time.Sleep(30 * time.Millisecond)
 
-	// Stop the display stats
-	close(done)
+	cancel()
 
-	// Wait for completion with timeout
+	// wait for completion with timeout
 	select {
 	case <-completed:
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("Test timed out waiting for DisplayStats to complete")
 	}
 
-	// Get the output
 	output := buf.String()
 
 	// Assert
-	assert.Contains(t, output, "Monitoring 1 tunnels and 1 entrypoints.",
+	assert.Contains(t, output, "Statistics is updating for 1 tunnels and 1 entrypoints",
 		"Should correctly count active tunnels and entrypoints")
 }
 
@@ -291,7 +277,6 @@ func TestDisplayStats_Shows_LatestStats_ForEntrypoints(t *testing.T) {
 	// Arrange
 	mockEntrypoint := createActiveMockEntrypoint(t, "test-ep-id", "test-entrypoint", "tcp")
 
-	// Setup stats
 	serviceStats := config.ServiceStats{
 		CurrentConns:    3,
 		TotalConns:      20,
@@ -302,7 +287,6 @@ func TestDisplayStats_Shows_LatestStats_ForEntrypoints(t *testing.T) {
 		TotalErrs:       5,
 	}
 
-	// Setup expectations
 	mockEntrypoint.On("IsClosed").Return(false)
 	mockEntrypoint.On("ID").Return("test-ep-id")
 	mockEntrypoint.On("Name").Return("test-entrypoint")
@@ -315,33 +299,28 @@ func TestDisplayStats_Shows_LatestStats_ForEntrypoints(t *testing.T) {
 	defer cleanup()
 
 	// Act
-	done := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		// Run display stats with a very short interval
-		stats.DisplayStats(done, 10*time.Millisecond)
+		// run display stats with a very short interval
+		stats.DisplayStats(ctx, 10*time.Millisecond)
 	}()
 
-	// Give it some time to process
+	// give it some time to process
 	time.Sleep(50 * time.Millisecond)
-	close(done)
+	cancel()
 
-	// Small delay to allow final output to be captured
+	// small delay to allow final output to be captured
 	time.Sleep(10 * time.Millisecond)
 
 	// Assert
 	output := stats.StdOutWriter.(*bytes.Buffer).String()
 
-	// Check monitoring title
-	assert.Contains(t, output, "Monitoring 1 entrypoints.", "Should show correct monitoring title")
-
-	// Check entrypoint stats
+	assert.Contains(t, output, "Statistics is updating for 1 entrypoints", "Should show correct monitoring title")
 	assert.Contains(t, output, "[test-entrypoint-TCP]", "Should display entrypoint name and type")
 	assert.Contains(t, output, "Conn: 3/20", "Should show current and total connections")
 	assert.Contains(t, output, "↑ 2.00 KB/s", "Should show upload speed")
 	assert.Contains(t, output, "↓ 1.00 KB/s", "Should show download speed")
 	assert.Contains(t, output, "Total: ↑ 2.00 MB ↓ 1.00 MB", "Should show total upload/download")
 	assert.Contains(t, output, "Err: 5", "Should show error count")
-
-	// Verify all expected calls were made
 	mockEntrypoint.AssertExpectations(t)
 }

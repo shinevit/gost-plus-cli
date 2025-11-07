@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"github.com/go-gost/gost.plus/config"
 	"github.com/go-gost/gost.plus/tunnel"
 	"github.com/go-gost/gost.plus/tunnel/entrypoint"
+	"github.com/go-gost/gost.plus/utils/fp/slice"
 	fp "github.com/go-gost/gost.plus/utils/fp/slice"
 )
 
@@ -34,7 +36,7 @@ func getActiveEntrypoints() uint64 {
 }
 
 // Shows statistics about active tunnels
-func DisplayStats(done chan struct{}, interval time.Duration) {
+func DisplayStats(ctx context.Context, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -43,7 +45,7 @@ func DisplayStats(done chan struct{}, interval time.Duration) {
 		fmt.Fprintf(StdOutWriter, "\033[2K\r")
 	}
 
-	showMonitoringTitle()
+	showStatisticsTaskTitle()
 
 	lastNumLines := 0
 	// Store last non-zero transfer rates for each tunnel
@@ -61,6 +63,9 @@ func DisplayStats(done chan struct{}, interval time.Duration) {
 			lineCount := 0
 
 			observableItems := slices.Concat(tunnel.GetAll(), entrypoint.GetAll())
+			observableItems = slice.Filter(observableItems, func(item tunnel.Tunnel) bool {
+				return item.IsActive()
+			})
 			for _, t := range observableItems {
 				if t == nil || t.IsClosed() {
 					continue
@@ -96,35 +101,35 @@ func DisplayStats(done chan struct{}, interval time.Duration) {
 
 			lastNumLines = lineCount
 
-		case <-done:
+		case <-ctx.Done():
 			return
 		}
 	}
 }
 
-func showMonitoringTitle() {
+func showStatisticsTaskTitle() {
 	var message string
-	staticMessage := "Statistics is updating:"
+	staticMessage := "Statistics is updating for"
 	activeTunnels := getActiveTunnels()
 	activeEntrypoints := getActiveEntrypoints()
 	if activeTunnels > 0 && activeEntrypoints > 0 {
-		message = fmt.Sprintf("Monitoring %d tunnels and %d entrypoints. %s\n",
+		message = fmt.Sprintf("%s %d tunnels and %d entrypoints:\n",
+			staticMessage,
 			activeTunnels,
 			activeEntrypoints,
-			staticMessage,
 		)
 	} else if activeTunnels > 0 && activeEntrypoints == 0 {
-		message = fmt.Sprintf("Monitoring %d tunnels. %s\n",
-			activeTunnels,
+		message = fmt.Sprintf("%s %d tunnels:\n",
 			staticMessage,
+			activeTunnels,
 		)
 	} else if activeTunnels == 0 && activeEntrypoints > 0 {
-		message = fmt.Sprintf("Monitoring %d entrypoints. %s\n",
-			activeEntrypoints,
+		message = fmt.Sprintf("%s %d entrypoints\n",
 			staticMessage,
+			activeEntrypoints,
 		)
 	} else {
-		message = "No items for monitoring"
+		message = "No items for statistics"
 	}
 	fmt.Fprint(StdOutWriter, message)
 }

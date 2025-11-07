@@ -98,7 +98,7 @@ func Delete(id string) {
 	}
 }
 
-func InitFromConfig() {
+func LoadFromConfig() {
 	for _, cfg := range config.Get().EntryPoints {
 		if cfg == nil {
 			continue
@@ -123,8 +123,6 @@ func InitFromConfig() {
 
 		if cfg.Closed {
 			ep.Close()
-		} else {
-			ep.Run()
 		}
 
 		ep.Favorite(cfg.Favorite)
@@ -186,7 +184,7 @@ func createEntryPoint(st string, opts tunnel.Options) (ep EntryPoint) {
 		tunnel.CreatedAtOption(opts.CreatedAt),
 	}
 	if !opts.Password.IsEmpty() {
-		options = append(options, tunnel.PasswordOption(opts.Password.String()))
+		options = append(options, tunnel.PasswordOption(opts.Password.Reveal()))
 	}
 	switch st {
 	case TCPEntryPoint:

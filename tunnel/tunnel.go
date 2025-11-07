@@ -2,10 +2,9 @@ package tunnel
 
 import (
 	"errors"
+	"slices"
 	"sync"
 	"time"
-
-	"slices"
 
 	"github.com/go-gost/core/logger"
 	"github.com/go-gost/gost.plus/config"
@@ -132,78 +131,67 @@ type Tunnel interface {
 	Err() error
 }
 
-type tunnelList struct {
-	list []Tunnel
-	mux  sync.RWMutex
+// manages the tunnels
+type tunnelManager struct {
+	tunnels map[string]Tunnel
+	mux     sync.RWMutex
 }
 
 var (
-	tunnels tunnelList
+	tm = &tunnelManager{
+		tunnels: make(map[string]Tunnel),
+	}
 )
 
 func Count() int {
-	tunnels.mux.RLock()
-	defer tunnels.mux.RUnlock()
-	return len(tunnels.list)
+	tm.mux.RLock()
+	defer tm.mux.RUnlock()
+	return len(tm.tunnels)
 }
 
 func Add(s Tunnel) {
-	tunnels.mux.Lock()
-	defer tunnels.mux.Unlock()
-	tunnels.list = append(tunnels.list, s)
+	if s == nil {
+		return
+	}
+	tm.mux.Lock()
+	defer tm.mux.Unlock()
+
+	if _, exists := tm.tunnels[s.ID()]; !exists {
+		tm.tunnels[s.ID()] = s
+	}
 }
 
 func Set(s Tunnel) {
 	if s == nil {
 		return
 	}
-	t := Get(s.ID())
-	if t == nil {
-		return
-	}
-	s.Favorite(t.IsFavorite())
+	tm.mux.Lock()
+	defer tm.mux.Unlock()
 
-	tunnels.mux.Lock()
-	defer tunnels.mux.Unlock()
-
-	for i, sv := range tunnels.list {
-		if sv != nil && sv.ID() == s.ID() {
-			tunnels.list[i] = s
-		}
+	if existingTunnel, exists := tm.tunnels[s.ID()]; exists {
+		s.Favorite(existingTunnel.IsFavorite())
+		tm.tunnels[s.ID()] = s
 	}
-}
-
-func GetIndex(index int) Tunnel {
-	tunnels.mux.RLock()
-	defer tunnels.mux.RUnlock()
-	if index < 0 || index >= len(tunnels.list) {
-		return nil
-	}
-	return tunnels.list[index]
 }
 
 func Get(id string) Tunnel {
-	tunnels.mux.RLock()
-	defer tunnels.mux.RUnlock()
+	tm.mux.RLock()
+	defer tm.mux.RUnlock()
 
-	for _, s := range tunnels.list {
-		if s != nil && s.ID() == id {
-			return s
-		}
+	tun, exists := tm.tunnels[id]
+	if exists {
+		return tun
 	}
 	return nil
 }
 
 func Delete(id string) {
-	tunnels.mux.Lock()
-	defer tunnels.mux.Unlock()
+	tm.mux.Lock()
+	defer tm.mux.Unlock()
 
-	for i, s := range tunnels.list {
-		if s != nil && s.ID() == id {
-			s.Close()
-			tunnels.list[i] = nil
-			return
-		}
+	if tun, exists := tm.tunnels[id]; exists {
+		tun.Close()
+		delete(tm.tunnels, id)
 	}
 }
 
@@ -239,12 +227,7 @@ func SaveConfig() error {
 	cfg := config.Get()
 	cfg.Tunnels = nil
 
-	for i := range Count() {
-		tun := GetIndex(i)
-		if tun == nil {
-			continue
-		}
-
+	for _, tun := range tm.tunnels {
 		opts := tun.Options()
 		cfg.Tunnels = append(cfg.Tunnels, &config.Tunnel{
 			ID:        tun.ID(),
@@ -273,8 +256,9 @@ func SaveConfig() error {
 	return nil
 }
 
-// Initializes tunnels instances from the configuration and starts them.
-func InitFromConfig() {
+// Initializes tunnels from the config file keeping them in memory
+// It does not run tunnels
+func LoadFromConfig() {
 	for _, cfg := range config.Get().Tunnels {
 		if cfg == nil {
 			continue
@@ -297,8 +281,6 @@ func InitFromConfig() {
 
 		if cfg.Closed {
 			tun.Close()
-		} else {
-			tun.Run()
 		}
 
 		tun.Favorite(cfg.Favorite)
@@ -317,7 +299,7 @@ func CreateTunnel(st string, opts Options) (t Tunnel) {
 		CreatedAtOption(opts.CreatedAt),
 	}
 	if !opts.Password.IsEmpty() {
-		options = append(options, PasswordOption(opts.Password.String()))
+		options = append(options, PasswordOption(opts.Password.Reveal()))
 	}
 
 	switch st {
@@ -337,10 +319,27 @@ func CreateTunnel(st string, opts Options) (t Tunnel) {
 	return
 }
 
+// returns sorted tunnels by CreatedAt
 func GetAll() []Tunnel {
-	tunnels.mux.RLock()
-	defer tunnels.mux.RUnlock()
-	return slices.Clone(tunnels.list)
+	tm.mux.RLock()
+	defer tm.mux.RUnlock()
+
+	tunnels := make([]Tunnel, 0, len(tm.tunnels))
+	for _, tun := range tm.tunnels {
+		tunnels = append(tunnels, tun)
+	}
+
+	slices.SortFunc(tunnels, func(a, b Tunnel) int {
+		if a != nil && b != nil && a.Options().CreatedAt.Before(b.Options().CreatedAt) {
+			return -1
+		}
+		if a != nil && b != nil && a.Options().CreatedAt.After(b.Options().CreatedAt) {
+			return 1
+		}
+		return 0
+	})
+
+	return tunnels
 }
 
 func getState(id string) xservice.State {
@@ -353,6 +352,9 @@ func getState(id string) xservice.State {
 }
 
 func isTunnelExisting(tun Tunnel) bool {
+	if tun == nil {
+		return false
+	}
 	existing := Get(tun.ID())
 	return existing == tun
 }

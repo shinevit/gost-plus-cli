@@ -1,0 +1,21 @@
+@startuml
+title Managing Tunnels
+
+actor "User" as user
+rectangle "GOST+ CLI" {
+  usecase "Create/Start Tunnel" as UC1
+  usecase "List Tunnels" as UC2
+  usecase "Delete Tunnel" as UC3
+  usecase "Specify Local Service" as UC1_1
+  usecase "Specify Tunnel Type\n(http, tls, file, tcp, udp)" as UC1_2
+  usecase "Provide Authentication\n(http, tls, file)" as UC1_3
+}
+
+user -- UC1
+user -- UC2
+user -- UC3
+
+UC1 ..> UC1_1 : <<include>>
+UC1 ..> UC1_2 : <<include>>
+UC1 ..> UC1_3 : <<extend>>
+@enduml
