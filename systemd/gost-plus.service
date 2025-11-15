@@ -1,14 +1,14 @@
 [Unit]
-Description=GOST+ Tunnel
+Description=GOST+ CLI Tunnel
 After=network.target
 
 [Service]
 Type=simple
-User=pi
-Group=pi
-WorkingDirectory=/home/pi
-Environment="HOME=/home/pi"
-Environment="USER=pi"
+User={{USER}}
+Group={{USER}}
+WorkingDirectory={{HOME}}
+Environment="HOME={{HOME}}"
+Environment="USER={{USER}}"
 ExecStart=/usr/local/bin/gost-tunnel -no-stats
 Restart=always
 RestartSec=10

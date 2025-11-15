@@ -1,0 +1,20 @@
+tunnels:
+  - id: 52407ecc-e6a0-4002-b0b3-37be502ec74e
+    name: dummy-home-server
+    type: http
+    endpoint: localhost:80
+    stats:
+      time: 2025-11-07T16:55:42.201251659+02:00
+      totalconns: 0
+      requestrate: 0
+      currentconns: 0
+      totalerrs: 0
+      inputbytes: 0
+      inputratebytes: 0
+      outputbytes: 0
+      outputratebytes: 0
+    favorite: false
+    closed: false
+    createdat: 2025-04-28T18:17:14.245340981+03:00
+entrypoints: []
+log: null

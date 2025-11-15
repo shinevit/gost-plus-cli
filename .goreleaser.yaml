@@ -1,0 +1,116 @@
+version: 2
+
+project_name: gost-tunnel
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: linux_builds
+    env:
+      - CGO_ENABLED=0
+    main: .
+    targets:
+      - linux_arm_5
+      - linux_arm_6
+      - linux_arm_7
+      - linux_arm64
+      - linux_amd64
+    ldflags:
+      - "-s -w -X 'main.version={{ .Tag }}'"
+
+  - id: macos_builds
+    env:
+      - CGO_ENABLED=0
+    main: .
+    targets:
+      - darwin_amd64
+      - darwin_arm64
+    ldflags:
+      - "-s -w -X 'main.version={{ .Tag }}'"
+
+  - id: windows_builds
+    env:
+      - CGO_ENABLED=0
+    main: .
+    targets:
+      - windows_386
+      - windows_amd64
+      - windows_arm64
+    ldflags:
+      - "-s -w -X 'main.version={{ .Tag }}'"
+
+upx:
+  - enabled: true
+    # Filter by build ID.
+    # ids: [build1, build2]
+
+    # Filter by GOOS.
+    goos: [linux]
+    # Filter by GOARCH.
+    goarch: [arm, arm64, amd64]
+
+    # Filter by GOARM.
+    # goarm: [8]
+
+    # Filter by GOAMD64.
+    # goamd64: [v1]
+
+    # Compress argument.
+    # Valid options are from '1' (faster) to '9' (better), and 'best'.
+    compress: best
+    # Whether to try LZMA (slower).
+    lzma: true
+    # Whether to try all methods and filters (slow).
+    brute: true
+
+  - enabled: true
+    goos: [windows]
+    goarch: [amd64, 386]
+    compress: best
+    lzma: true
+    brute: true
+
+archives:
+  - id: linux_archives
+    ids:
+      - linux_builds
+    formats: [tar.gz]
+    files:
+      - README.md
+      - src: systemd/config.yml
+        dst: config.yml
+      - src: systemd/gost-plus.service
+        dst: gost-plus.service
+      - src: systemd/install-service.sh
+        dst: install-service.sh
+
+  - id: other_archives
+    ids:
+      - macos_builds
+      - windows_builds
+    formats: [tar.gz]
+    files:
+      - README.md
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-Next"
+
+checksum:
+  name_template: 'checksums.txt'
+
+changelog:
+  sort: desc
+  filters:
+    exclude:
+      - '(?i)^docs'
+      - '(?i)^tests'
+      - '(?i)^unit tests'
+
+release:
+  prerelease: auto
+  mode: keep-existing

@@ -2,7 +2,24 @@
 
 Instantly and securely share any local service with the world. `gost-tunnel` is user-friendly and a powerful, cross-platform CLI that creates encrypted tunnels to the [GOST.PLUS](https://gost.plus) network. Expose local web servers, SSH, databases, or share entire folders with a single command. It delivers a fast, reliable, ngrok-like experience with zero-config simplicity.
 
-## Features:
+## Table of Contents
+1. [Features](#features)
+1. [Use Cases](#use-cases)
+1. [Supported Tunnels](#supported-tunnels)
+1. [Supported Entrypoints](#supported-entrypoints)
+1. [Security](#security)
+1. [Definitions](#definitions)
+1. [Screenshots](#screenshots)
+1. [Installation](#installation)
+1. [Build](#build)
+1. [Get started](#get-started)
+1. [Commands](#commands)
+1. [Folders and configuration](#folders-and-configuration)
+1. [Logging](#logging)
+1. [Unit Testing](#unit-testing)
+
+## <a name="features"></a>Features:
+🔐 **http -> https forwarding**: http to https tunnel forwarding by default<br>
 💻 **Cross-Platform Support**: Runs/builds seamlessly on/for Linux, macOS, and Windows<br>
 🚀 **Zero Configuration Mode**: Start tunneling with a single command<br>
 🔧 **Configurable & Scriptable**: YAML config support and CLI flags<br>
@@ -10,30 +27,32 @@ Instantly and securely share any local service with the world. `gost-tunnel` is 
 🛠️ **Integrated Logging & Stats**: Real-time connection metrics and JSON logging for diagnostics<br>
 ⚙️ **Systemd Service Integration**: Easy deployment as a system service on Linux<br>
 
-## 💡 Use Cases:
+## 💡&nbsp;Use Cases:<a name="use-cases"></a>
 ✅ IoT device connectivity on edge devices such as Raspberry Pi<br>
-✅ Ideal for rapid development prototyping<br>
-✅ Webhook testing and remote access to local environments<br>
-✅ Private API exposure<br>
+✅ Https Webhook for bots<br>
 ✅ Secure file sharing for collaboration<br>
+✅ Private API exposure<br>
+✅ Ideal for rapid development prototyping<br>
 
-## Supported Tunnels:
+
+## Supported Tunnels:<a name="supported-tunnels"></a>
 * **HTTP Tunnel** - Exposes local web servers
 * **File Tunnel** - Share local folders via web interface
 * **TCP Tunnel**  - Forward any TCP service (e.g., databases, SSH)
 * **UDP Tunnel**  - Forward UDP traffic (e.g., DNS, gaming)
 
-## Supported Entrypoints:
+## Supported Entrypoints:<a name="supported-entrypoints"></a>
 * **TCP Entrypoint** - Connects to the remote address of a TCP tunnel by tunnel id
 * **UDP Entrypoint** - Connects to the remote address of a UDP tunnel by tunnel id
 
-## 🔐 Security
+## 🔐&nbsp;Security<a name="security"></a>
 - **End-to-End Encryption**: All tunnel traffic is encrypted
 - **Authentication**: Built-in support with username/password authentication for HTTP and File tunnel types
 - **TLS Support**: Expose your HTTPS services with TLS tunnel
-- **Password encoding**: Password on a configuration file is automatically encoded in Base64 format for basic protection against casual viewing, and passed through system environment variable
+- **Password encoding**: Passwords in config are Base64 encoded for basic protection and passed via the environment variable.
 
-## 📝 Definitions
+
+## 📝&nbsp;Definitions<a name="more"></a>
 
 ### Tunnels
 
@@ -43,7 +62,7 @@ Tunnels are outbound connections from your local address to the GOST.PLUS infras
 ### Entrypoints
 Entrypoints are the receiving ends that connect to your tunnels. They listen to a local address, connect to a remote tunnel and forward incoming traffic through the established tunnel to the mapped local address. Each entrypoint must be paired with a tunnel using a unique tunnel ID.
 
-## Screenshots
+## Screenshots<a name="screenshots"></a>
 
 ### Running with statistics
 
@@ -53,14 +72,47 @@ Entrypoints are the receiving ends that connect to your tunnels. They listen to 
 
 <img src="assets/tunnel-logging.png" width="512" />
 
-## 📦 Build
+## Installation<a name="installation"></a>
 
-### Prerequisites
+### Binary release files
+
+Download manually and install one from this page:   
+[https://github.com/shinevit/gost-plus-cli/releases](https://github.com/shinevit/gost-plus-cli/releases)
+
+### Web install for Linux/macOS
+
+Install latest version from Bash shell:   
+```bash
+bash <(curl -fsSL https://github.com/shinevit/gost-plus-cli/raw/cli/install.sh) --latest
+```
+
+Select version for install:
+```bash
+bash <(curl -fsSL https://github.com/shinevit/gost-plus-cli/raw/cli/install.sh)
+```
+
+### Web install for Windows
+
+Install latest version from PowerShell as Admin:   
+
+```powershell
+iex "& { $(irm https://github.com/shinevit/gost-plus-cli/raw/cli/install.ps1) } -Latest"
+```
+
+Select version for install:
+```powershell
+irm https://github.com/shinevit/gost-plus-cli/raw/cli/install.ps1 | iex
+```
+
+## 📦&nbsp;Build<a name="build"></a>
+ 
+ ### Prerequisites
 -   **Go**: Ensure you have Go installed (version 1.21 or higher recommended).
 -   **go-winres**: For Windows builds, install `go-winres` to embed version information and an icon:
     ```bash
-    go install github.com/cratonica/go-winres@latest
+    go install github.com/tc-hib/go-winres@latest
     ```
+-   **upx**: To compress the binaries
 
 ### Building for the current platform
 ```bash
@@ -92,7 +144,7 @@ To build for specific platforms, use the `make` commands:
     ```
 Refer to [Makefile](Makefile) for more CPU architectures
 
-## 🚀 Get started
+## 🚀&nbsp;Get started<a name="get-started"></a>
 
 1.  **Create and start a HTTP tunnel**:
     ```bash
@@ -141,7 +193,7 @@ Refer to [Makefile](Makefile) for more CPU architectures
     ./install.sh
     ```
 
-## ▶ Commands
+## ▶&nbsp;Commands<a name="commands"></a>
 
 Each command provides detailed help with examples.<br>
 To learn more, run any command with the `--help` or `-h` flag (e.g., `gost-tunnel http -h`).
@@ -233,7 +285,7 @@ export AUTH_PASSWORD=my_secret_password
 gost-tunnel tls 192.168.0.100:443 -n secure-api -u api-user -hostname api.example.com -stats 2s -monitor 2m
 ```
 
-## 📁 Configuration and folders
+## 📁&nbsp;Folders and configuration<a name="folders-and-configuration"></a>
 
 Find the locations of your configuration and a log file by running the `paths` command:
 ```bash
@@ -252,7 +304,7 @@ Default paths are:
 - app configuration file: `/home/[user]/.config/gost.plus/config.yml`
 - app log file: `/home/[user]/.config/gost.plus/logs/gost-plus.log`
 
-## 🧾 Logging
+## 🧾&nbsp;Logging<a name="logging"></a>
 - Keep track pretty formatted logs:
 ```bash
 tail -f "/Users/[user]/Library/Application Support/gost.plus/logs/gost-plus.log" | jq -C .
@@ -263,7 +315,13 @@ tail -f "/Users/[user]/Library/Application Support/gost.plus/logs/gost-plus.log"
 tail -f "/Users/[user]/Library/Application Support/gost.plus/logs/gost-plus.log" | jq -c .
 ```
 
-## 🚦 Unit Testing
+## 🚦&nbsp;Unit Testing<a name="unit-testing"></a>
+
+### Install required tools
+```bash
+go install github.com/xhd2015/xgo/cmd/xgo@latest
+go install github.com/vektra/mockery/v3@v3.6.0
+```
 
 ### Mocks generating
 ```bash
