@@ -1,0 +1,87 @@
+name: goreleaser
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Fetch tags
+        run: git fetch --force --tags
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/go/bin
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install Dependencies
+        run: |
+          go mod download
+          go install github.com/tc-hib/go-winres@latest
+          go install github.com/xhd2015/xgo/cmd/xgo@latest
+          go mod verify
+
+      - name: Run Unit tests
+        run: xgo test -v ./tests/...
+
+      - name: Install UPX
+        uses: crazy-max/ghaction-upx@v3
+        with:
+          install-only: true
+
+      # More assembly might be required: Docker logins, GPG, etc. It all depends
+      # on your needs.
+      - name: Run GoReleaser
+        id: goreleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          # either 'goreleaser' (default) or 'goreleaser-pro':
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Your GoReleaser Pro key, if you are using the 'goreleaser-pro'
+          # distribution:
+          # GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+
+      - name: Get Release ID
+        id: get_release
+        run: |
+          RELEASE_ID=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}" | jq -r .id)
+          echo "release_id=$RELEASE_ID" >> $GITHUB_OUTPUT
+      
+      - name: Build macOS Binaries
+        run: make releases
+      
+      - name: Upload Darwin Binaries to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            bin/*darwin-amd64*
+            bin/*darwin-arm64*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

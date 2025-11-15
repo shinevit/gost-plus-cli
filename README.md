@@ -13,7 +13,8 @@ Instantly and securely share any local service with the world. `gost-tunnel` is 
 ## 💡 Use Cases:
 ✅ IoT device connectivity on edge devices such as Raspberry Pi<br>
 ✅ Ideal for rapid development prototyping<br>
-✅ Webhook testing and remote access to local environments<br>
+✅ Https to http tunneling by default<br>
+✅ Https Webhook for bots<br>
 ✅ Private API exposure<br>
 ✅ Secure file sharing for collaboration<br>
 
@@ -59,8 +60,9 @@ Entrypoints are the receiving ends that connect to your tunnels. They listen to 
 -   **Go**: Ensure you have Go installed (version 1.21 or higher recommended).
 -   **go-winres**: For Windows builds, install `go-winres` to embed version information and an icon:
     ```bash
-    go install github.com/cratonica/go-winres@latest
+    go install github.com/tc-hib/go-winres@latest
     ```
+-   **upx**: To compress the binaries
 
 ### Building for the current platform
 ```bash
@@ -264,6 +266,12 @@ tail -f "/Users/[user]/Library/Application Support/gost.plus/logs/gost-plus.log"
 ```
 
 ## 🚦 Unit Testing
+
+### Install required tools
+```bash
+go install github.com/xhd2015/xgo/cmd/xgo@latest
+go install github.com/vektra/mockery/v3@v3.6.0
+```
 
 ### Mocks generating
 ```bash

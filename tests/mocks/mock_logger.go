@@ -53,7 +53,7 @@ type MockLogger_Debug_Call struct {
 }
 
 // Debug is a helper method to define mock.On call
-//   - args
+//   - args ...any
 func (_e *MockLogger_Expecter) Debug(args ...interface{}) *MockLogger_Debug_Call {
 	return &MockLogger_Debug_Call{Call: _e.mock.On("Debug",
 		append([]interface{}{}, args...)...)}
@@ -61,8 +61,15 @@ func (_e *MockLogger_Expecter) Debug(args ...interface{}) *MockLogger_Debug_Call
 
 func (_c *MockLogger_Debug_Call) Run(run func(args ...any)) *MockLogger_Debug_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		variadicArgs := args[0].([]any)
-		run(variadicArgs...)
+		var arg0 []any
+		var variadicArgs []any
+		if len(args) > 0 {
+			variadicArgs = args[0].([]any)
+		}
+		arg0 = variadicArgs
+		run(
+			arg0...,
+		)
 	})
 	return _c
 }
@@ -94,8 +101,8 @@ type MockLogger_Debugf_Call struct {
 }
 
 // Debugf is a helper method to define mock.On call
-//   - format
-//   - args
+//   - format string
+//   - args ...any
 func (_e *MockLogger_Expecter) Debugf(format interface{}, args ...interface{}) *MockLogger_Debugf_Call {
 	return &MockLogger_Debugf_Call{Call: _e.mock.On("Debugf",
 		append([]interface{}{format}, args...)...)}
@@ -103,8 +110,20 @@ func (_e *MockLogger_Expecter) Debugf(format interface{}, args ...interface{}) *
 
 func (_c *MockLogger_Debugf_Call) Run(run func(format string, args ...any)) *MockLogger_Debugf_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		variadicArgs := args[1].([]any)
-		run(args[0].(string), variadicArgs...)
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		var arg1 []any
+		var variadicArgs []any
+		if len(args) > 1 {
+			variadicArgs = args[1].([]any)
+		}
+		arg1 = variadicArgs
+		run(
+			arg0,
+			arg1...,
+		)
 	})
 	return _c
 }
@@ -136,7 +155,7 @@ type MockLogger_Error_Call struct {
 }
 
 // Error is a helper method to define mock.On call
-//   - args
+//   - args ...any
 func (_e *MockLogger_Expecter) Error(args ...interface{}) *MockLogger_Error_Call {
 	return &MockLogger_Error_Call{Call: _e.mock.On("Error",
 		append([]interface{}{}, args...)...)}
@@ -144,8 +163,15 @@ func (_e *MockLogger_Expecter) Error(args ...interface{}) *MockLogger_Error_Call
 
 func (_c *MockLogger_Error_Call) Run(run func(args ...any)) *MockLogger_Error_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		variadicArgs := args[0].([]any)
-		run(variadicArgs...)
+		var arg0 []any
+		var variadicArgs []any
+		if len(args) > 0 {
+			variadicArgs = args[0].([]any)
+		}
+		arg0 = variadicArgs
+		run(
+			arg0...,
+		)
 	})
 	return _c
 }
@@ -177,8 +203,8 @@ type MockLogger_Errorf_Call struct {
 }
 
 // Errorf is a helper method to define mock.On call
-//   - format
-//   - args
+//   - format string
+//   - args ...any
 func (_e *MockLogger_Expecter) Errorf(format interface{}, args ...interface{}) *MockLogger_Errorf_Call {
 	return &MockLogger_Errorf_Call{Call: _e.mock.On("Errorf",
 		append([]interface{}{format}, args...)...)}
@@ -186,8 +212,20 @@ func (_e *MockLogger_Expecter) Errorf(format interface{}, args ...interface{}) *
 
 func (_c *MockLogger_Errorf_Call) Run(run func(format string, args ...any)) *MockLogger_Errorf_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		variadicArgs := args[1].([]any)
-		run(args[0].(string), variadicArgs...)
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		var arg1 []any
+		var variadicArgs []any
+		if len(args) > 1 {
+			variadicArgs = args[1].([]any)
+		}
+		arg1 = variadicArgs
+		run(
+			arg0,
+			arg1...,
+		)
 	})
 	return _c
 }
@@ -219,7 +257,7 @@ type MockLogger_Fatal_Call struct {
 }
 
 // Fatal is a helper method to define mock.On call
-//   - args
+//   - args ...any
 func (_e *MockLogger_Expecter) Fatal(args ...interface{}) *MockLogger_Fatal_Call {
 	return &MockLogger_Fatal_Call{Call: _e.mock.On("Fatal",
 		append([]interface{}{}, args...)...)}
@@ -227,8 +265,15 @@ func (_e *MockLogger_Expecter) Fatal(args ...interface{}) *MockLogger_Fatal_Call
 
 func (_c *MockLogger_Fatal_Call) Run(run func(args ...any)) *MockLogger_Fatal_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		variadicArgs := args[0].([]any)
-		run(variadicArgs...)
+		var arg0 []any
+		var variadicArgs []any
+		if len(args) > 0 {
+			variadicArgs = args[0].([]any)
+		}
+		arg0 = variadicArgs
+		run(
+			arg0...,
+		)
 	})
 	return _c
 }
@@ -260,8 +305,8 @@ type MockLogger_Fatalf_Call struct {
 }
 
 // Fatalf is a helper method to define mock.On call
-//   - format
-//   - args
+//   - format string
+//   - args ...any
 func (_e *MockLogger_Expecter) Fatalf(format interface{}, args ...interface{}) *MockLogger_Fatalf_Call {
 	return &MockLogger_Fatalf_Call{Call: _e.mock.On("Fatalf",
 		append([]interface{}{format}, args...)...)}
@@ -269,8 +314,20 @@ func (_e *MockLogger_Expecter) Fatalf(format interface{}, args ...interface{}) *
 
 func (_c *MockLogger_Fatalf_Call) Run(run func(format string, args ...any)) *MockLogger_Fatalf_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		variadicArgs := args[1].([]any)
-		run(args[0].(string), variadicArgs...)
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		var arg1 []any
+		var variadicArgs []any
+		if len(args) > 1 {
+			variadicArgs = args[1].([]any)
+		}
+		arg1 = variadicArgs
+		run(
+			arg0,
+			arg1...,
+		)
 	})
 	return _c
 }
@@ -346,7 +403,7 @@ type MockLogger_Info_Call struct {
 }
 
 // Info is a helper method to define mock.On call
-//   - args
+//   - args ...any
 func (_e *MockLogger_Expecter) Info(args ...interface{}) *MockLogger_Info_Call {
 	return &MockLogger_Info_Call{Call: _e.mock.On("Info",
 		append([]interface{}{}, args...)...)}
@@ -354,8 +411,15 @@ func (_e *MockLogger_Expecter) Info(args ...interface{}) *MockLogger_Info_Call {
 
 func (_c *MockLogger_Info_Call) Run(run func(args ...any)) *MockLogger_Info_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		variadicArgs := args[0].([]any)
-		run(variadicArgs...)
+		var arg0 []any
+		var variadicArgs []any
+		if len(args) > 0 {
+			variadicArgs = args[0].([]any)
+		}
+		arg0 = variadicArgs
+		run(
+			arg0...,
+		)
 	})
 	return _c
 }
@@ -387,8 +451,8 @@ type MockLogger_Infof_Call struct {
 }
 
 // Infof is a helper method to define mock.On call
-//   - format
-//   - args
+//   - format string
+//   - args ...any
 func (_e *MockLogger_Expecter) Infof(format interface{}, args ...interface{}) *MockLogger_Infof_Call {
 	return &MockLogger_Infof_Call{Call: _e.mock.On("Infof",
 		append([]interface{}{format}, args...)...)}
@@ -396,8 +460,20 @@ func (_e *MockLogger_Expecter) Infof(format interface{}, args ...interface{}) *M
 
 func (_c *MockLogger_Infof_Call) Run(run func(format string, args ...any)) *MockLogger_Infof_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		variadicArgs := args[1].([]any)
-		run(args[0].(string), variadicArgs...)
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		var arg1 []any
+		var variadicArgs []any
+		if len(args) > 1 {
+			variadicArgs = args[1].([]any)
+		}
+		arg1 = variadicArgs
+		run(
+			arg0,
+			arg1...,
+		)
 	})
 	return _c
 }
@@ -435,14 +511,20 @@ type MockLogger_IsLevelEnabled_Call struct {
 }
 
 // IsLevelEnabled is a helper method to define mock.On call
-//   - level
+//   - level logger.LogLevel
 func (_e *MockLogger_Expecter) IsLevelEnabled(level interface{}) *MockLogger_IsLevelEnabled_Call {
 	return &MockLogger_IsLevelEnabled_Call{Call: _e.mock.On("IsLevelEnabled", level)}
 }
 
 func (_c *MockLogger_IsLevelEnabled_Call) Run(run func(level logger.LogLevel)) *MockLogger_IsLevelEnabled_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(logger.LogLevel))
+		var arg0 logger.LogLevel
+		if args[0] != nil {
+			arg0 = args[0].(logger.LogLevel)
+		}
+		run(
+			arg0,
+		)
 	})
 	return _c
 }
@@ -474,7 +556,7 @@ type MockLogger_Trace_Call struct {
 }
 
 // Trace is a helper method to define mock.On call
-//   - args
+//   - args ...any
 func (_e *MockLogger_Expecter) Trace(args ...interface{}) *MockLogger_Trace_Call {
 	return &MockLogger_Trace_Call{Call: _e.mock.On("Trace",
 		append([]interface{}{}, args...)...)}
@@ -482,8 +564,15 @@ func (_e *MockLogger_Expecter) Trace(args ...interface{}) *MockLogger_Trace_Call
 
 func (_c *MockLogger_Trace_Call) Run(run func(args ...any)) *MockLogger_Trace_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		variadicArgs := args[0].([]any)
-		run(variadicArgs...)
+		var arg0 []any
+		var variadicArgs []any
+		if len(args) > 0 {
+			variadicArgs = args[0].([]any)
+		}
+		arg0 = variadicArgs
+		run(
+			arg0...,
+		)
 	})
 	return _c
 }
@@ -515,8 +604,8 @@ type MockLogger_Tracef_Call struct {
 }
 
 // Tracef is a helper method to define mock.On call
-//   - format
-//   - args
+//   - format string
+//   - args ...any
 func (_e *MockLogger_Expecter) Tracef(format interface{}, args ...interface{}) *MockLogger_Tracef_Call {
 	return &MockLogger_Tracef_Call{Call: _e.mock.On("Tracef",
 		append([]interface{}{format}, args...)...)}
@@ -524,8 +613,20 @@ func (_e *MockLogger_Expecter) Tracef(format interface{}, args ...interface{}) *
 
 func (_c *MockLogger_Tracef_Call) Run(run func(format string, args ...any)) *MockLogger_Tracef_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		variadicArgs := args[1].([]any)
-		run(args[0].(string), variadicArgs...)
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		var arg1 []any
+		var variadicArgs []any
+		if len(args) > 1 {
+			variadicArgs = args[1].([]any)
+		}
+		arg1 = variadicArgs
+		run(
+			arg0,
+			arg1...,
+		)
 	})
 	return _c
 }
@@ -557,7 +658,7 @@ type MockLogger_Warn_Call struct {
 }
 
 // Warn is a helper method to define mock.On call
-//   - args
+//   - args ...any
 func (_e *MockLogger_Expecter) Warn(args ...interface{}) *MockLogger_Warn_Call {
 	return &MockLogger_Warn_Call{Call: _e.mock.On("Warn",
 		append([]interface{}{}, args...)...)}
@@ -565,8 +666,15 @@ func (_e *MockLogger_Expecter) Warn(args ...interface{}) *MockLogger_Warn_Call {
 
 func (_c *MockLogger_Warn_Call) Run(run func(args ...any)) *MockLogger_Warn_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		variadicArgs := args[0].([]any)
-		run(variadicArgs...)
+		var arg0 []any
+		var variadicArgs []any
+		if len(args) > 0 {
+			variadicArgs = args[0].([]any)
+		}
+		arg0 = variadicArgs
+		run(
+			arg0...,
+		)
 	})
 	return _c
 }
@@ -598,8 +706,8 @@ type MockLogger_Warnf_Call struct {
 }
 
 // Warnf is a helper method to define mock.On call
-//   - format
-//   - args
+//   - format string
+//   - args ...any
 func (_e *MockLogger_Expecter) Warnf(format interface{}, args ...interface{}) *MockLogger_Warnf_Call {
 	return &MockLogger_Warnf_Call{Call: _e.mock.On("Warnf",
 		append([]interface{}{format}, args...)...)}
@@ -607,8 +715,20 @@ func (_e *MockLogger_Expecter) Warnf(format interface{}, args ...interface{}) *M
 
 func (_c *MockLogger_Warnf_Call) Run(run func(format string, args ...any)) *MockLogger_Warnf_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		variadicArgs := args[1].([]any)
-		run(args[0].(string), variadicArgs...)
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		var arg1 []any
+		var variadicArgs []any
+		if len(args) > 1 {
+			variadicArgs = args[1].([]any)
+		}
+		arg1 = variadicArgs
+		run(
+			arg0,
+			arg1...,
+		)
 	})
 	return _c
 }
@@ -648,14 +768,20 @@ type MockLogger_WithFields_Call struct {
 }
 
 // WithFields is a helper method to define mock.On call
-//   - stringToV
+//   - stringToV map[string]any
 func (_e *MockLogger_Expecter) WithFields(stringToV interface{}) *MockLogger_WithFields_Call {
 	return &MockLogger_WithFields_Call{Call: _e.mock.On("WithFields", stringToV)}
 }
 
 func (_c *MockLogger_WithFields_Call) Run(run func(stringToV map[string]any)) *MockLogger_WithFields_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(map[string]any))
+		var arg0 map[string]any
+		if args[0] != nil {
+			arg0 = args[0].(map[string]any)
+		}
+		run(
+			arg0,
+		)
 	})
 	return _c
 }

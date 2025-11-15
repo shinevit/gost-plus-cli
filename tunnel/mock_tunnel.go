@@ -225,14 +225,20 @@ type MockTunnel_Favorite_Call struct {
 }
 
 // Favorite is a helper method to define mock.On call
-//   - b
+//   - b bool
 func (_e *MockTunnel_Expecter) Favorite(b interface{}) *MockTunnel_Favorite_Call {
 	return &MockTunnel_Favorite_Call{Call: _e.mock.On("Favorite", b)}
 }
 
 func (_c *MockTunnel_Favorite_Call) Run(run func(b bool)) *MockTunnel_Favorite_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(bool))
+		var arg0 bool
+		if args[0] != nil {
+			arg0 = args[0].(bool)
+		}
+		run(
+			arg0,
+		)
 	})
 	return _c
 }
@@ -567,14 +573,20 @@ type MockTunnel_SetStats_Call struct {
 }
 
 // SetStats is a helper method to define mock.On call
-//   - stats
+//   - stats config.ServiceStats
 func (_e *MockTunnel_Expecter) SetStats(stats interface{}) *MockTunnel_SetStats_Call {
 	return &MockTunnel_SetStats_Call{Call: _e.mock.On("SetStats", stats)}
 }
 
 func (_c *MockTunnel_SetStats_Call) Run(run func(stats config.ServiceStats)) *MockTunnel_SetStats_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(config.ServiceStats))
+		var arg0 config.ServiceStats
+		if args[0] != nil {
+			arg0 = args[0].(config.ServiceStats)
+		}
+		run(
+			arg0,
+		)
 	})
 	return _c
 }
