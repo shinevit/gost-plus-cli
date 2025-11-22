@@ -10,7 +10,7 @@ builds:
   - id: linux_builds
     env:
       - CGO_ENABLED=0
-    main: .
+    main: ./main.go
     targets:
       - linux_arm_5
       - linux_arm_6
@@ -23,7 +23,7 @@ builds:
   - id: macos_builds
     env:
       - CGO_ENABLED=0
-    main: .
+    main: ./main.go
     targets:
       - darwin_amd64
       - darwin_arm64
@@ -33,7 +33,7 @@ builds:
   - id: windows_builds
     env:
       - CGO_ENABLED=0
-    main: .
+    main: ./main.go
     targets:
       - windows_386
       - windows_amd64
